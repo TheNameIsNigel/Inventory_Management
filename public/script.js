@@ -29,6 +29,7 @@ function initializeScanner() {
             }
 
             const selectedDeviceId = videoDevices[0].deviceId;
+            console.log("Selected device ID:", selectedDeviceId); // Log the selected device ID
             startScanner(selectedDeviceId);
         })
         .catch(err => {
@@ -39,6 +40,7 @@ function initializeScanner() {
                     // If successful, get device ID from stream tracks
                     const track = stream.getVideoTracks()[0];
                     const deviceId = track.getSettings().deviceId;
+                    console.log("Device ID from stream:", deviceId); // Log the device ID from the stream
                     startScanner(deviceId);
 
                     // Stop the stream tracks to release the camera
@@ -61,27 +63,21 @@ function startScanner(deviceId) {
                 deviceId: deviceId,
                 facingMode: "environment"
             },
-            area: {
+            area: { 
                 top: "25%",
-                right: "10%",
-                left: "10%",
+                right: "25%",
+                left: "25%",
                 bottom: "25%"
             },
             singleChannel: false
         },
         decoder: {
             readers: [
-                "code_128_reader",
-                "ean_reader",
-                "ean_8_reader",
-                "code_39_reader",
-                "code_39_vin_reader",
-                "codabar_reader",
-                "upc_reader",
-                "upc_e_reader",
-                "i2of5_reader",
-                "2of5_reader",
-                "code_93_reader"
+                "code_128_reader", // For IMEI (usually Code 128 format)
+                "ean_reader",      // For EAN (includes EAN-13, often used for UPCs)
+                "ean_8_reader",    // For EAN-8
+                "upc_reader",      // For UPC-A
+                "upc_e_reader"     // For UPC-E
             ],
             debug: {
                 showCanvas: true,
@@ -105,6 +101,7 @@ function startScanner(deviceId) {
             displayError(`Failed to start scanner: ${err}`);
             return;
         }
+        console.log("Quagga initialization successful"); // Log successful initialization
         Quagga.start();
         isScanning = true;
         clearError();
@@ -114,29 +111,46 @@ function startScanner(deviceId) {
 }
 
 function handleDetection(result) {
+    console.log("Detection result:", result); // Log the entire result object
+
     const code = result.codeResult.code;
-    const scanType = getScanType(result.codeResult.format);
+    const format = result.codeResult.format;
 
-    if (scanType) {
-        // Set the values of the hidden form fields
-        document.getElementById('scan-type').value = scanType;
-        document.getElementById('scan-value').value = code;
+    // Determine scan type based on format
+    let scanType = getScanType(format);
 
-        // Vibrate and change background color for feedback
-        navigator.vibrate(200);
-        document.body.style.backgroundColor = 'lightgreen';
-        setTimeout(() => document.body.style.backgroundColor = '', 100);
+    // Special handling for IMEI if it's a 15-digit number (not all IMEIs are encoded as barcodes)
+    if (!scanType && code.length === 15 && /^\d+$/.test(code)) {
+        scanType = 'IMEI';
+    }
 
-        // Stop Quagga scanner
-        Quagga.stop();
-        isScanning = false;
+    if (!scanType) {
+        console.warn(`Unknown scan type detected: ${format}, Code: ${code}`);
+        return;
+    }
 
-        // Submit the form using AJAX
-        const formData = new FormData(document.getElementById('scan-form'));
-        fetch('/scan', {
-            method: 'POST',
-            body: formData
-        })
+    console.log("Scanned code:", code);
+    console.log("Scan type:", scanType);
+
+    // Set the values of the hidden form fields
+    document.getElementById('scan-type').value = scanType;
+    document.getElementById('scan-value').value = code;
+
+    // Vibrate and change background color for feedback
+    navigator.vibrate(200);
+    document.body.style.backgroundColor = 'lightgreen';
+    setTimeout(() => document.body.style.backgroundColor = '', 100);
+
+    // Stop Quagga scanner
+    Quagga.stop();
+    isScanning = false;
+
+    // Submit the form using AJAX
+    const formData = new FormData(document.getElementById('scan-form'));
+    fetch('/scan', {
+        method: 'POST',
+        body: formData
+    })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -153,9 +167,6 @@ function handleDetection(result) {
         .catch(error => {
             console.error('Error submitting scan:', error);
         });
-    } else {
-        console.warn(`Unknown scan type detected: ${result.codeResult.format}`);
-    }
 }
 
 function getScanType(format) {
@@ -163,6 +174,10 @@ function getScanType(format) {
         case 'ean_13':
         case 'upc_a':
             return 'UPC';
+        case 'ean_8':
+            return 'EAN8';
+        case 'upc_e':
+            return 'UPCE';
         case 'code_128':
             return 'Barcode';
         default:
