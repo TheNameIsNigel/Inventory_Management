@@ -63,7 +63,7 @@ function startScanner(deviceId) {
                 deviceId: deviceId,
                 facingMode: "environment"
             },
-            area: { 
+            area: { // আশেপাশের 25% জায়গা বাদ দিয়ে শুধু মাঝের 50% স্ক্যান করবে 
                 top: "25%",
                 right: "25%",
                 left: "25%",
