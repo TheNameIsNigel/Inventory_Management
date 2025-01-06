@@ -5,7 +5,7 @@ const session = require('express-session');
 const { google } = require('googleapis');
 const fs = require('fs');
 const Sentry = require("@sentry/node");
-const { ProfilingIntegration } = require("@sentry/profiling-node");
+const { nodeProfilingIntegration } = require("@sentry/profiling-node");
 const app = express();
 
 const httpPort = 3000;
@@ -19,7 +19,7 @@ const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_u
 Sentry.init({
     dsn: "YOUR_SENTRY_DSN", // Replace with your Sentry DSN
     integrations: [
-        new ProfilingIntegration(),
+        nodeProfilingIntegration(),
         new Sentry.Integrations.Http({ tracing: true }),
         new Sentry.Integrations.Express({ app }),
         ...Sentry.autoDiscoverNodePerformanceMonitoringIntegrations(),
@@ -28,6 +28,9 @@ Sentry.init({
     profilesSampleRate: 1.0,
     environment: process.env.NODE_ENV || "development", // Set environment
 });
+
+// Start profiling
+Sentry.profiler.startProfiler();
 
 // In-memory storage for failed login attempts
 const failedLoginAttempts = {};
@@ -304,15 +307,19 @@ app.get('/logout', (req, res) => {
     });
 });
 
-// The error handler must be before any other error middleware and after all controllers
-app.use(Sentry.Handlers.errorHandler());
+// Add error handling middleware after all other routes
+Sentry.setupExpressErrorHandler(app);
 
 // Optional fallthrough error handler
 app.use(function onError(err, req, res, next) {
-    // The error id is attached to `res.sentry` to be returned
-    // and optionally displayed to the user for support.
     res.statusCode = 500;
-    res.end(res.sentry + "\n");
+    res.end("Response error: " + res.sentry + "\n");
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    Sentry.captureException(reason); // Send unhandled rejection to Sentry
 });
 
 // Create HTTP server
