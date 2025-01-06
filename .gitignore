@@ -1,6 +1,9 @@
 # Secrets
 credentials.json
 
+# Apple Shit
+.DS_Store
+
 # Databases
 *.db
 

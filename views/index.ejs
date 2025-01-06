@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMEI/UPC Scanner</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Adjust the size and position of the video for better UI */
+        #interactive.viewport {
+            position: relative;
+            width: 100%;
+            height: auto;
+            overflow: hidden;
+            max-width: 600px;
+            max-height: 400px;
+            margin: 0 auto; /* Center the video */
+        }
+
+        #interactive.viewport canvas, video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #interactive.viewport canvas.drawingBuffer {
+            z-index: 1; /* Ensure the drawing buffer is above the video */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <% if (!dealerCodeAuthenticated) { %>
+            <div class="alert alert-warning">
+                Please authenticate with a valid dealer code. <a href="/dealer-login">Authenticate Now</a>
+            </div>
+        <% } else { %>
+            <div id="interactive" class="viewport"></div>
+            <div id="error-message" class="alert alert-danger" style="display: none;"></div>
+
+            <form action="/scan" method="post" id="scan-form">
+                <input type="hidden" id="scan-type" name="type">
+                <input type="hidden" id="scan-value" name="value">
+            </form>
+
+            <h2>Scanned Items</h2>
+            <table class="table" id="scan-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% scans.forEach(function(scan) { %>
+                        <tr>
+                            <td><%= scan.id %></td>
+                            <td><%= scan.type %></td>
+                            <td><%= scan.value %></td>
+                            <td><%= scan.timestamp %></td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        <% } %>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
