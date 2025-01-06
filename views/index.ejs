@@ -7,18 +7,17 @@
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
-        /* Adjust the size and position of the video for better UI */
+        /* Styling for the scanner viewport */
         #interactive.viewport {
             position: relative;
             width: 100%;
             height: auto;
             overflow: hidden;
-            max-width: 600px;
-            max-height: 400px;
             margin: 0 auto; /* Center the video */
         }
 
-        #interactive.viewport canvas, video {
+        /* Styling for the video and canvas elements */
+        #interactive.viewport video, #interactive.viewport canvas {
             position: absolute;
             top: 0;
             left: 0;
@@ -26,6 +25,7 @@
             height: 100%;
         }
 
+        /* Specific styling for the drawingBuffer canvas */
         #interactive.viewport canvas.drawingBuffer {
             z-index: 1; /* Ensure the drawing buffer is above the video */
         }
