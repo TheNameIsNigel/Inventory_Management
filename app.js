@@ -109,6 +109,8 @@ app.get('/', isValidDealerCode, (req, res) => {
 });
 
 app.post('/scan', (req, res) => {
+    console.log("Request Body:", req.body); // Log the request body
+
     const { sku, imei } = req.body;
     const dealerCodeId = req.session.dealerCodeId;
 
@@ -185,10 +187,9 @@ app.get('/auth/google/callback', async (req, res) => {
 app.get('/dashboard', isAuthenticated, async (req, res) => {
     try {
         const scans = await new Promise((resolve, reject) => {
-            // Ensure 'scans.sku' is included in the SELECT statement
             db.all('SELECT scans.*, dealer_codes.code AS dealerCode FROM scans LEFT JOIN dealer_codes ON scans.dealer_code_id = dealer_codes.id', [], (err, rows) => {
                 if (err) reject(err);
-                console.log("Scans from DB:", rows); // Log the data from the database for debugging
+                console.log("Scans from DB:", rows); // Log the data from the database
                 resolve(rows);
             });
         });

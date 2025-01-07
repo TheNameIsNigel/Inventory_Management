@@ -5,6 +5,7 @@ console.log('Script loaded');
 document.addEventListener('DOMContentLoaded', () => {
     const codeReader = new BrowserMultiFormatReader();
     const videoElement = document.getElementById('interactive');
+    let scannedData = null; // Global variable to store scanned data
 
     function startScan() {
         console.log('Listing video devices...');
@@ -37,49 +38,73 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (code.length === 15) {
             type = 'IMEI';
         } else {
-            type = 'UNKNOWN'
+            type = 'UNKNOWN';
         }
 
-        let sku = '';
-        let imei = '';
-
-        if (type === 'UPC') {
-            sku = code;
-        } else if (type === 'IMEI') {
-            imei = code;
-        } else {
-            console.log('Unknown barcode type');
-        }
-
-        const formData = new FormData();
-        formData.append('sku', sku);
-        formData.append('imei', imei);
-
-        fetch('/scan', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const tableBody = document.getElementById('scan-table-body');
-                const newRow = tableBody.insertRow();
-                const skuCell = newRow.insertCell();
-                const imeiCell = newRow.insertCell();
-                const timestampCell = newRow.insertCell();
-
-                skuCell.textContent = sku;
-                imeiCell.textContent = imei;
-                timestampCell.textContent = new Date().toLocaleString();
-
-                alert(data.message);
+        if (scannedData === null) {
+            // First code scanned
+            scannedData = { code: code, type: type };
+            if (type === 'UPC') {
+                alert('Please scan IMEI.');
+            } else if (type === 'IMEI') {
+                alert('Please scan UPC.');
             } else {
-                console.error('Scan failed: ', data.message);
+                alert('Unknown code scanned');
+                scannedData = null;
             }
-        })
-        .catch(error => {
-            console.error('Error submitting scan: ', error);
-        });
+        } else {
+            // Second code scanned
+            if (type === scannedData.type) {
+                // Duplicate scan
+                alert('Duplicate scan detected. Please scan the other code.');
+                scannedData = null; // Clear scannedData
+            } else {
+                // UPC and IMEI scanned
+                let sku = '';
+                let imei = '';
+
+                if (type === 'UPC') {
+                    sku = code;
+                    imei = scannedData.code;
+                } else {
+                    sku = scannedData.code;
+                    imei = code;
+                }
+
+                const formData = new FormData();
+                formData.append('sku', sku);
+                formData.append('imei', imei);
+
+                console.log("FormData:", formData); // Log the formData
+
+                fetch('/scan', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const tableBody = document.getElementById('scan-table-body');
+                        const newRow = tableBody.insertRow();
+                        const skuCell = newRow.insertCell();
+                        const imeiCell = newRow.insertCell();
+                        const timestampCell = newRow.insertCell();
+
+                        skuCell.textContent = sku;
+                        imeiCell.textContent = imei;
+                        timestampCell.textContent = new Date().toLocaleString();
+
+                        alert(data.message);
+                        scannedData = null; // Clear scannedData
+                    } else {
+                        console.error('Scan failed: ', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error submitting scan: ', error);
+                });
+            }
+        }
     }
 
     navigator.mediaDevices
@@ -88,10 +113,9 @@ document.addEventListener('DOMContentLoaded', () => {
             videoElement.srcObject = stream;
             videoElement.setAttribute('playsinline', true);
             videoElement.play();
+            startScan(); // Start scanning immediately after camera access
         })
         .catch((err) => {
             console.error('Error accessing video stream: ', err);
         });
-
-    document.getElementById('startButton').addEventListener('click', startScan);
 });
