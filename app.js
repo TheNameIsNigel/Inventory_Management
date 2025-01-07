@@ -113,22 +113,25 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
         if (dealerCodeRecord) {
             delete failedLoginAttempts[ip];
 
-            // Get the user's store ID
-            const user = await new Promise((resolve, reject) => {
-                db.get('SELECT store_id FROM users WHERE id = ?', [req.session.userId], (err, row) => {
-                    if (err) reject(err);
-                    resolve(row);
-                });
-            });
-
-            if (user && user.store_id === dealerCodeRecord.store_id) {
+            // Check if the user's session indicates they are logged in and isAdmin
+            if (req.session.isAuthenticated && req.session.isAdmin) {
                 req.session.dealerCodeAuthenticated = true;
                 req.session.dealerCodeId = dealerCodeRecord.id;
                 req.session.dealerName = dealerCodeRecord.name;
-                req.session.storeId = dealerCodeRecord.store_id
+                req.session.storeId = dealerCodeRecord.store_id;
                 res.redirect('/');
             } else {
-                res.status(403).send('Access Denied: User is not authorized for this store.');
+                // If user is not an admin, check if the dealer code belongs to a specific store
+                if (dealerCodeRecord.store_id) {
+                    req.session.dealerCodeAuthenticated = true;
+                    req.session.dealerCodeId = dealerCodeRecord.id;
+                    req.session.dealerName = dealerCodeRecord.name;
+                    req.session.storeId = dealerCodeRecord.store_id;
+                    res.redirect('/');
+                } else {
+                    // If the dealer code does not belong to a store, deny access
+                    res.status(403).send('Access Denied: Dealer code is not associated with a store.');
+                }
             }
         } else {
             failedLoginAttempts[ip] = failedLoginAttempts[ip] || { attempts: 0, timestamp: Date.now() };
