@@ -32,6 +32,31 @@
 
         <div class="card mb-4">
             <div class="card-header">
+                <h2>Manage Stores</h2>
+            </div>
+            <div class="card-body">
+                <form action="/create-store" method="post" class="mb-3">
+                    <div class="input-group">
+                        <input type="text" name="storeName" class="form-control" placeholder="Enter store name" required>
+                        <input type="text" name="storeAddress" class="form-control" placeholder="Enter store address (optional)">
+                        <div class="input-group-append">
+                            <button type="submit" class="btn btn-primary">Create Store</button>
+                        </div>
+                    </div>
+                </form>
+                <ul class="list-group">
+                    <% stores.forEach(function(store) { %>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <%= store.name %> - <%= store.address %>
+                            <a href="/store/<%= store.id %>" class="btn btn-sm btn-info">View Scans</a>
+                        </li>
+                    <% }); %>
+                </ul>                
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
                 <h2>Manage Dealer Codes</h2>
             </div>
             <div class="card-body">
@@ -39,6 +64,12 @@
                     <div class="input-group">
                         <input type="text" name="dealerCode" class="form-control" placeholder="Enter new dealer code" required>
                         <input type="text" name="dealerName" class="form-control" placeholder="Enter dealer name" required>
+                        <select name="storeId" class="form-control" required>
+                            <option value="">Select Store</option>
+                            <% stores.forEach(function(store) { %>
+                                <option value="<%= store.id %>"><%= store.name %></option>
+                            <% }); %>
+                        </select>
                         <div class="input-group-append">
                             <button type="submit" class="btn btn-primary">Add Code</button>
                         </div>
@@ -47,13 +78,71 @@
                 <ul class="list-group">
                     <% dealerCodes.forEach(function(code) { %>
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <%= code.code %> (<%= code.name %>)
+                            <%= code.code %> (<%= code.name %>) - Store: <%= code.store_id %>
                             <form action="/delete-dealer-code/<%= code.id %>" method="post">
                                 <button type="submit" class="btn btn-sm btn-danger">Delete</button>
                             </form>
                         </li>
                     <% }); %>
                 </ul>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Assign Admins to Stores</h2>
+            </div>
+            <div class="card-body">
+                <form action="/assign-admin" method="post">
+                    <div class="form-group">
+                        <label for="userId">Select User:</label>
+                        <select id="userId" name="userId" class="form-control" required>
+                            <option value="">Select User</option>
+                            <% users.forEach(function(user) { %>
+                                <option value="<%= user.id %>"><%= user.username %> (<%= user.email %>)</option>
+                            <% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="storeId">Select Store:</label>
+                        <select id="storeId" name="storeId" class="form-control" required>
+                            <option value="">Select Store</option>
+                            <% stores.forEach(function(store) { %>
+                                <option value="<%= store.id %>"><%= store.name %></option>
+                            <% }); %>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Assign Admin</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Assign Dealers to Stores</h2>
+            </div>
+            <div class="card-body">
+                <form action="/assign-dealer" method="post">
+                    <div class="form-group">
+                        <label for="dealerId">Select Dealer:</label>
+                        <select id="dealerId" name="dealerId" class="form-control" required>
+                            <option value="">Select Dealer</option>
+                            <% dealerCodes.forEach(function(dealer) { %>
+                                <option value="<%= dealer.id %>"><%= dealer.name %></option>
+                            <% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="storeId">Select Store:</label>
+                        <select id="storeId" name="storeId" class="form-control" required>
+                            <option value="">Select Store</option>
+                            <% stores.forEach(function(store) { %>
+                                <option value="<%= store.id %>"><%= store.name %></option>
+                            <% }); %>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Assign Dealer</button>
+                </form>
             </div>
         </div>
 
@@ -68,6 +157,15 @@
                     <div class="col">
                         <label for="endDate">End Date:</label>
                         <input type="date" id="endDate" name="endDate" class="form-control" value="<%= endDate %>">
+                    </div>
+                    <div class="col">
+                        <label for="store">Store:</label>
+                        <select id="store" name="store" class="form-control">
+                            <option value="">All</option>
+                            <% stores.forEach(function(store) { %>
+                                <option value="<%= store.id %>" <%= store.id == storeId ? 'selected' : '' %>><%= store.name %></option>
+                            <% }); %>
+                        </select>
                     </div>
                     <div class="col">
                         <label for="dealerCode">Dealer Code:</label>
@@ -95,6 +193,7 @@
                     <th>IMEI</th>
                     <th>Dealer Code</th>
                     <th>Dealer Name</th>
+                    <th>Store Name</th>
                     <th>Timestamp</th>
                 </tr>
             </thead>
@@ -105,6 +204,7 @@
                         <td><%= scan.imei %></td>
                         <td><%= scan.dealerCode %></td>
                         <td><%= scan.dealerName %></td>
+                        <td><%= scan.storeName %></td>
                         <td><%= scan.timestamp %></td>
                     </tr>
                 <% }); %>

@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('./database');
 const path = require('path');
 const session = require('express-session');
-const { google, outlook, microsoft } = require('googleapis');
+const { google } = require('googleapis');
 const fs = require('fs');
 const app = express();
 const multer = require('multer');
@@ -13,10 +13,6 @@ const httpPort = 3000;
 const credentials = require('./credentials.json');
 const { client_secret, client_id, redirect_uris } = credentials.web;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-
-const microsoftClientId = credentials.microsoft.client_id;
-const microsoftClientSecret = credentials.microsoft.client_secret;
-const microsoftRedirectUri = credentials.microsoft.redirect_uris[0];
 
 const failedLoginAttempts = {};
 
@@ -74,6 +70,13 @@ function isAdmin(req, res, next) {
     res.status(403).send('Access Denied');
 }
 
+function isPrimaryAdmin(req, res, next) {
+    if (req.session.isPrimaryAdmin) {
+        return next();
+    }
+    res.status(403).send('Access Denied');
+}
+
 // Function to get the greeting based on time of day
 function getGreeting(dealerName) {
     const hour = new Date().getHours();
@@ -108,10 +111,24 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
 
         if (dealerCodeRecord) {
             delete failedLoginAttempts[ip];
-            req.session.dealerCodeAuthenticated = true;
-            req.session.dealerCodeId = dealerCodeRecord.id;
-            req.session.dealerName = dealerCodeRecord.name; // Store dealer name in session
-            res.redirect('/');
+
+            // Get the user's store ID
+            const user = await new Promise((resolve, reject) => {
+                db.get('SELECT store_id FROM users WHERE id = ?', [req.session.userId], (err, row) => {
+                    if (err) reject(err);
+                    resolve(row);
+                });
+            });
+
+            if (user && user.store_id === dealerCodeRecord.store_id) {
+                req.session.dealerCodeAuthenticated = true;
+                req.session.dealerCodeId = dealerCodeRecord.id;
+                req.session.dealerName = dealerCodeRecord.name;
+                req.session.storeId = dealerCodeRecord.store_id
+                res.redirect('/');
+            } else {
+                res.status(403).send('Access Denied: User is not authorized for this store.');
+            }
         } else {
             failedLoginAttempts[ip] = failedLoginAttempts[ip] || { attempts: 0, timestamp: Date.now() };
             failedLoginAttempts[ip].attempts++;
@@ -146,41 +163,39 @@ app.get('/', isValidDealerCode, (req, res) => {
     });
 });
 
-
 // Use multer middleware for /scan route
-app.post('/scan', upload.none(), (req, res) => { // Use upload.none() since you're not handling files
-    console.log("Request Body (Raw):", req.body); // Log the raw request body
+app.post('/scan', upload.none(), (req, res) => {
+    console.log("Request Body (Raw):", req.body);
 
-    const { sku, imei } = req.body; // Destructure sku and imei
+    const { sku, imei } = req.body;
 
-    // Log the extracted values
     console.log("Extracted SKU:", sku);
     console.log("Extracted IMEI:", imei);
 
     const dealerCodeId = req.session.dealerCodeId;
     console.log("Dealer Code ID:", dealerCodeId);
 
-    // Validate data (check if sku and imei are not empty)
+    const storeId = req.session.storeId;
+    console.log("Store ID:", storeId);
+
     if (!sku || !imei) {
         console.error("Error: SKU or IMEI is missing.");
-        return res.status(400).json({ error: 'SKU or IMEI is missing' }); // Send JSON error
+        return res.status(400).json({ error: 'SKU or IMEI is missing' });
     }
 
     // Get the current time in EST
     const currentTimeEST = moment.tz('America/New_York').format('YYYY-MM-DD HH:mm:ss');
 
     // Use parameterized query to prevent SQL injection
-    const sql = 'INSERT INTO scans (sku, imei, dealer_code_id, timestamp) VALUES (?, ?, ?, ?)';
-    db.run(sql, [sku, imei, dealerCodeId, currentTimeEST], function (err) {
+    const sql = 'INSERT INTO scans (sku, imei, dealer_code_id, store_id, timestamp) VALUES (?, ?, ?, ?, ?)';
+    db.run(sql, [sku, imei, dealerCodeId, storeId, currentTimeEST], function (err) {
         if (err) {
             console.error("Database Error:", err.message);
-            return res.status(500).json({ error: 'Error saving scan to database' }); // Send JSON error
+            return res.status(500).json({ error: 'Error saving scan to database' });
         }
 
-        // Log the successful insertion
         console.log(`A row has been inserted with rowid ${this.lastID}`);
 
-        // Reset dealer code authentication
         req.session.dealerCodeAuthenticated = false;
 
         res.json({
@@ -196,7 +211,7 @@ app.get('/login', (req, res) => {
         access_type: 'offline',
         scope: ['profile', 'email']
     });
-    res.render('login', { authUrl });
+    res.render('login', { authUrl }); // Assuming you have a login.ejs file
 });
 
 app.get('/auth/google/callback', async (req, res) => {
@@ -226,102 +241,6 @@ app.get('/auth/google/callback', async (req, res) => {
                 let isAdmin = false;
                 let isPrimaryAdmin = false;
 
-                // Check if user exists
-                if (!user) {
-                    // Check if it's the first user (primary admin)
-                    const firstUser = await new Promise((resolve, reject) => {
-                        db.get('SELECT * FROM users', [], (err, row) => {
-                            if (err) reject(err);
-                            resolve(row);
-                        });
-                    });
-
-                    if (!firstUser) {
-                        isPrimaryAdmin = true;
-                        isAdmin = true;
-                    }
-                    if (userEmail.endsWith('@t-mobile.com')) {
-                        isAdmin = true;
-                    }
-
-                    // Insert new user
-                    db.run('INSERT INTO users (username, email, isAdmin, primary_admin) VALUES (?, ?, ?, ?)', [userEmail, userEmail, isAdmin, isPrimaryAdmin], function(err) {
-                        if (err) {
-                            console.error(err.message);
-                            return res.status(500).send('Error creating user');
-                        }
-                        console.log(`New user created with ID ${this.lastID}`);
-                        req.session.isAuthenticated = true;
-                        req.session.username = userEmail; // Default username to email
-                        req.session.isAdmin = isAdmin;
-                        res.redirect('/dashboard');
-                    });
-                } else {
-                    // Existing user
-                    req.session.isAuthenticated = true;
-                    req.session.username = user.username;
-                    req.session.isAdmin = user.isAdmin;
-                    res.redirect('/dashboard');
-                }
-            });
-        } else {
-            res.status(403).send('User not authorized');
-        }
-    } catch (error) {
-        console.error('Error during Google authentication:', error);
-        res.status(500).send('Authentication error');
-    }
-});
-
-// Microsoft Login
-app.get('/auth/microsoft', (req, res) => {
-    const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=<span class="math-inline">\{microsoftClientId\}&response\_type\=code&redirect\_uri\=</span>{microsoftRedirectUri}&response_mode=query&scope=openid%20profile%20email&state=12345`;
-    res.redirect(authUrl);
-});
-
-app.get('/auth/microsoft/callback', async (req, res) => {
-    const { code } = req.query;
-
-    try {
-        const tokenResponse = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: new URLSearchParams({
-                client_id: microsoftClientId,
-                scope: 'openid profile email',
-                code: code,
-                redirect_uri: microsoftRedirectUri,
-                grant_type: 'authorization_code',
-                client_secret: microsoftClientSecret
-            })
-        });
-
-        const tokenData = await tokenResponse.json();
-        const accessToken = tokenData.access_token;
-
-        // Fetch user information using the access token
-        const userResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`
-            }
-        });
-
-        const userData = await userResponse.json();
-        const userEmail = userData.mail || userData.userPrincipalName;
-
-        // Check if user exists in the database
-        db.get('SELECT * FROM users WHERE email = ?', [userEmail], async (err, user) => {
-            if (err) {
-                console.error(err.message);
-                return res.status(500).send('Internal Server Error');
-            }
-
-            let isAdmin = false;
-            let isPrimaryAdmin = false;
-
-            if (!user) {
                 // Check if it's the first user (primary admin)
                 const firstUser = await new Promise((resolve, reject) => {
                     db.get('SELECT * FROM users', [], (err, row) => {
@@ -333,73 +252,101 @@ app.get('/auth/microsoft/callback', async (req, res) => {
                 if (!firstUser) {
                     isPrimaryAdmin = true;
                     isAdmin = true;
-                }
-
-                if (userEmail.endsWith('@t-mobile.com')) {
+                } else if (userEmail.endsWith('@t-mobile.com')) {
                     isAdmin = true;
                 }
 
-                // Insert new user
-                db.run('INSERT INTO users (username, email, isAdmin, primary_admin) VALUES (?, ?, ?, ?)', [userEmail, userEmail, isAdmin, isPrimaryAdmin], function(err) {
-                    if (err) {
-                        console.error(err.message);
-                        return res.status(500).send('Error creating user');
-                    }
-                    console.log(`New user created with ID ${this.lastID}`);
-                    req.session.isAuthenticated = true;
-                    req.session.username = userEmail; // Default username to email
-                    req.session.isAdmin = isAdmin;
-                    res.redirect('/dashboard');
-                });
-            } else {
-                // Existing user
-                req.session.isAuthenticated = true;
-                req.session.username = user.username;
-                req.session.isAdmin = user.isAdmin;
-                res.redirect('/dashboard');
-            }
-        });
+                if (!user) {
+                    // Insert new user
+                    db.run('INSERT INTO users (username, email, isAdmin, primary_admin) VALUES (?, ?, ?, ?)', [userEmail, userEmail, isAdmin, isPrimaryAdmin], function(err) {
+                        if (err) {
+                            console.error(err.message);
+                            return res.status(500).send('Error creating user');
+                        }
+                        console.log(`New user created with ID ${this.lastID}`);
+                        
+                        // Set the session variables after successful user creation
+                        req.session.isAuthenticated = true;
+                        req.session.username = userEmail; // Default username to email
+                        req.session.isAdmin = isAdmin;
+                        req.session.isPrimaryAdmin = isPrimaryAdmin;
+                        req.session.userId = this.lastID;
+                        res.redirect('/dashboard');
+                    });
+                } else {
+                    // Existing user
+                    // Update user's admin status
+                    db.run('UPDATE users SET isAdmin = ?, primary_admin = ? WHERE id = ?', [isAdmin, isPrimaryAdmin, user.id], function(err) {
+                        if (err) {
+                            console.error(err.message);
+                            return res.status(500).send('Error updating user');
+                        }
+                        console.log(`User ${user.id} updated successfully`);
+
+                        req.session.isAuthenticated = true;
+                        req.session.username = user.username;
+                        req.session.isAdmin = isAdmin;
+                        req.session.isPrimaryAdmin = isPrimaryAdmin;
+                        req.session.userId = user.id;
+                        res.redirect('/dashboard');
+                    });
+                }
+            });
+        } else {
+            res.status(403).send('User not authorized');
+        }
     } catch (error) {
-        console.error('Error during Microsoft authentication:', error);
+        console.error('Error during Google authentication:', error);
         res.status(500).send('Authentication error');
     }
 });
 
-app.get('/dashboard', isAuthenticated, isAdmin, async (req, res) => {
+app.get('/dashboard', isAuthenticated, async (req, res) => {
+    // Check if the user is an admin
+    if (!req.session.isAdmin) {
+        // If not an admin, redirect to the dealer-specific page
+        return res.redirect(`/store/${req.session.storeId}`);
+    }
+
     // Get filter parameters from query string
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
     const dealerCodeId = req.query.dealerCode;
+    const storeId = req.query.store;
 
     // Construct the base SQL query
     let sql = `
-        SELECT scans.*, dealer_codes.code AS dealerCode, dealer_codes.name AS dealerName 
+        SELECT scans.*, 
+               dealer_codes.code AS dealerCode, 
+               dealer_codes.name AS dealerName,
+               stores.name AS storeName
         FROM scans 
         LEFT JOIN dealer_codes ON scans.dealer_code_id = dealer_codes.id
+        LEFT JOIN stores ON scans.store_id = stores.id
     `;
     const queryParams = [];
 
     // Add WHERE clauses based on filters
-    if (startDate || endDate || dealerCodeId) {
-        sql += ' WHERE ';
-        const conditions = [];
+    const conditions = [];
+    if (startDate) {
+        conditions.push('DATE(scans.timestamp, \'localtime\') >= ?');
+        queryParams.push(startDate);
+    }
+    if (endDate) {
+        conditions.push('DATE(scans.timestamp, \'localtime\') <= ?');
+        queryParams.push(endDate);
+    }
+    if (dealerCodeId) {
+        conditions.push('scans.dealer_code_id = ?');
+        queryParams.push(dealerCodeId);
+    }
+    if (storeId) {
+        conditions.push('scans.store_id = ?');
+        queryParams.push(storeId);
+    }
 
-        if (startDate) {
-            conditions.push('DATE(scans.timestamp) >= ?');
-            queryParams.push(startDate);
-        }
-
-        if (endDate) {
-            conditions.push('DATE(scans.timestamp) <= ?');
-            queryParams.push(endDate);
-        }
-
-        if (dealerCodeId) {
-            conditions.push('scans.dealer_code_id = ?');
-            queryParams.push(dealerCodeId);
-        }
-
-        sql += conditions.join(' AND ');
+    if (conditions.length > 0) {
+        sql += ' WHERE ' + conditions.join(' AND ');
     }
 
     // Order the results
@@ -420,14 +367,31 @@ app.get('/dashboard', isAuthenticated, isAdmin, async (req, res) => {
             });
         });
 
-        const users = await new Promise((resolve, reject) => {
-            db.all('SELECT id, username, email FROM users', [], (err, rows) => {
+        const stores = await new Promise((resolve, reject) => {
+            db.all('SELECT * FROM stores', [], (err, rows) => {
                 if (err) reject(err);
                 resolve(rows);
             });
         });
 
-        res.render('dashboard', { scans, username: req.session.username, dealerCodes, startDate, endDate, dealerCodeId, users });
+        const users = await new Promise((resolve, reject) => {
+            db.all('SELECT id, username, email, store_id FROM users', [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows);
+            });
+        });
+
+        res.render('dashboard', {
+            scans,
+            username: req.session.username,
+            dealerCodes,
+            startDate,
+            endDate,
+            dealerCodeId,
+            stores,
+            storeId,
+            users
+        });
     } catch (err) {
         console.error('Error fetching data from the database:', err.message);
         res.status(500).send('Error retrieving data from the database');
@@ -435,16 +399,16 @@ app.get('/dashboard', isAuthenticated, isAdmin, async (req, res) => {
 });
 
 app.post('/add-dealer-code', isAuthenticated, isAdmin, (req, res) => {
-    const { dealerCode, dealerName } = req.body;
+    const { dealerCode, dealerName, storeId } = req.body;
 
-    db.run('INSERT INTO dealer_codes (code, name) VALUES (?, ?)', [dealerCode, dealerName], function(err) {
+    db.run('INSERT INTO dealer_codes (code, name, store_id) VALUES (?, ?, ?)', [dealerCode, dealerName, storeId], function(err) {
         if (err) {
             console.error(err.message);
             return res.status(500).send('Error adding dealer code.');
         }
         console.log(`Dealer code added with ID ${this.lastID}`);
         res.redirect('/dashboard');
-    });
+        });
 });
 
 app.post('/delete-dealer-code/:id', isAuthenticated, isAdmin, (req, res) => {
@@ -460,13 +424,128 @@ app.post('/delete-dealer-code/:id', isAuthenticated, isAdmin, (req, res) => {
     });
 });
 
+// Add a new route to handle store creation
+app.post('/create-store', isAuthenticated, isPrimaryAdmin, (req, res) => {
+    const { storeName, storeAddress } = req.body;
+
+    db.run('INSERT INTO stores (name, address) VALUES (?, ?)', [storeName, storeAddress], function(err) {
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send('Error creating store.');
+        }
+        console.log(`Store created with ID ${this.lastID}`);
+        res.redirect('/dashboard');
+    });
+});
+
+// Add a new route to handle assigning admins to stores
+app.post('/assign-admin', isAuthenticated, isPrimaryAdmin, (req, res) => {
+    const { userId, storeId } = req.body;
+
+    db.run('UPDATE users SET store_id = ? WHERE id = ?', [storeId, userId], function(err) {
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send('Error assigning admin to store.');
+        }
+        console.log(`Admin ${userId} assigned to store ${storeId}`);
+        res.redirect('/dashboard');
+    });
+});
+
+// Add a new route to handle assigning dealers to stores
+app.post('/assign-dealer', isAuthenticated, isAdmin, (req, res) => {
+    const { dealerId, storeId } = req.body;
+
+    db.run('UPDATE dealer_codes SET store_id = ? WHERE id = ?', [storeId, dealerId], function(err) {
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send('Error assigning dealer to store.');
+        }
+        console.log(`Dealer ${dealerId} assigned to store ${storeId}`);
+        res.redirect('/dashboard');
+    });
+});
+
+app.get('/store/:storeId', isAuthenticated, async (req, res) => {
+    const { storeId } = req.params;
+
+    // Check if the user is an admin or if they are assigned to the requested store
+    if (!req.session.isAdmin && req.session.storeId !== storeId) {
+        return res.status(403).send('Access Denied');
+    }
+
+    // Get filter parameters from query string
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    const dealerCodeId = req.query.dealerCode;
+
+    // Construct the base SQL query
+    let sql = `
+        SELECT scans.*, dealer_codes.code AS dealerCode, dealer_codes.name AS dealerName
+        FROM scans
+        LEFT JOIN dealer_codes ON scans.dealer_code_id = dealer_codes.id
+        WHERE scans.store_id = ?
+    `;
+    const queryParams = [storeId];
+
+    // Add WHERE clauses based on filters
+    if (startDate) {
+        conditions.push('DATE(scans.timestamp) >= ?');
+        queryParams.push(startDate);
+    }
+    if (endDate) {
+        conditions.push('DATE(scans.timestamp) <= ?');
+        queryParams.push(endDate);
+    }
+    if (dealerCodeId) {
+        conditions.push('scans.dealer_code_id = ?');
+        queryParams.push(dealerCodeId);
+    }
+
+    if (conditions.length > 0) {
+        sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    // Order the results
+    sql += ' ORDER BY scans.timestamp DESC';
+
+    try {
+        const scans = await new Promise((resolve, reject) => {
+            db.all(sql, queryParams, (err, rows) => {
+                if (err) reject(err);
+                resolve(rows);
+            });
+        });
+
+        const dealerCodes = await new Promise((resolve, reject) => {
+            db.all('SELECT * FROM dealer_codes WHERE store_id = ?', [storeId], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows);
+            });
+        });
+
+        res.render('store', {
+            scans,
+            username: req.session.username,
+            dealerCodes,
+            startDate,
+            endDate,
+            dealerCodeId,
+            storeId
+        });
+    } catch (err) {
+        console.error('Error fetching data from the database:', err.message);
+        res.status(500).send('Error retrieving data from the database');
+    }
+});
+
 app.get('/logout', (req, res) => {
     req.session.destroy(err => {
         if (err) {
             console.error('Logout error:', err);
             return res.status(500).send('Logout failed');
         }
-        res.redirect('/dealer-login');
+        res.redirect('/login');
     });
 });
 
