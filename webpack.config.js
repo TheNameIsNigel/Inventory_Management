@@ -1,22 +1,22 @@
 const path = require('path');
 
 module.exports = {
-  entry: './public/script.js', // Entry point of your application
+  entry: './public/script.js',
   output: {
-    filename: 'bundle.js', // Output bundled file name
-    path: path.resolve(__dirname, 'public/dist'), // Output directory
+    filename: 'bundle.js',
+    path: path.resolve(__dirname, 'public/dist'),
   },
   mode: 'development', // Set to 'production' for production builds
-  devtool: 'inline-source-map', // Add source maps for easier debugging
+  devtool: 'inline-source-map',
   module: {
     rules: [
       {
-        test: /\.js$/, // Apply this rule to all .js files
-        exclude: /node_modules/, // Exclude the node_modules directory
+        test: /\.js$/,
+        exclude: /node_modules/,
         use: {
-          loader: 'babel-loader', // Use babel-loader for transpiling
+          loader: 'babel-loader',
           options: {
-            presets: ['@babel/preset-env'], // Use the @babel/preset-env preset
+            presets: ['@babel/preset-env'],
           },
         },
       },
