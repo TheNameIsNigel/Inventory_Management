@@ -12,6 +12,7 @@ const { client_secret, client_id, redirect_uris } = credentials.web;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
 const failedLoginAttempts = {};
+
 function checkFailedLogins(req, res, next) {
     const ip = req.ip;
 
@@ -111,7 +112,7 @@ app.post('/scan', (req, res) => {
     const { sku, imei } = req.body;
     const dealerCodeId = req.session.dealerCodeId;
 
-    console.log("SKU:", sku); // Debugging: Log the values
+    console.log("SKU:", sku);
     console.log("IMEI:", imei);
     console.log("Dealer Code ID:", dealerCodeId);
 

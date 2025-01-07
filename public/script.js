@@ -1,23 +1,23 @@
 import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
 
-console.log('Script loaded'); // Check if script is loaded
+console.log('Script loaded');
 
 document.addEventListener('DOMContentLoaded', () => {
     const codeReader = new BrowserMultiFormatReader();
     const videoElement = document.getElementById('interactive');
 
     function startScan() {
-        console.log('Listing video devices...'); // Log before listing devices
+        console.log('Listing video devices...');
         codeReader
             .listVideoInputDevices()
             .then((videoInputDevices) => {
-                console.log('Video input devices:', videoInputDevices); // Log the devices
+                console.log('Video input devices:', videoInputDevices);
                 const selectedDeviceId = videoInputDevices[0].deviceId;
 
-                console.log('Starting scan...'); // Log before starting scan
+                console.log('Starting scan...');
                 codeReader.decodeFromVideoDevice(selectedDeviceId, videoElement, (result, err) => {
                     if (result) {
-                        console.log('Code scanned:', result.text); // Log the scanned code
+                        console.log('Code scanned:', result.text);
                         processScannedCode(result.text);
                     }
                     if (err && !(err instanceof NotFoundException)) {
@@ -31,9 +31,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function processScannedCode(code) {
+        let type = '';
+        if (code.length === 12) {
+            type = 'UPC';
+        } else if (code.length === 15) {
+            type = 'IMEI';
+        } else {
+            type = 'UNKNOWN'
+        }
+
+        let sku = '';
+        let imei = '';
+
+        if (type === 'UPC') {
+            sku = code;
+        } else if (type === 'IMEI') {
+            imei = code;
+        } else {
+            console.log('Unknown barcode type');
+        }
+
         const formData = new FormData();
-        formData.append('sku', code);
-        formData.append('imei', ''); // Update with your IMEI detection logic
+        formData.append('sku', sku);
+        formData.append('imei', imei);
 
         fetch('/scan', {
             method: 'POST',
@@ -42,15 +62,14 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Dynamically add the scanned item to the table
                 const tableBody = document.getElementById('scan-table-body');
                 const newRow = tableBody.insertRow();
                 const skuCell = newRow.insertCell();
                 const imeiCell = newRow.insertCell();
                 const timestampCell = newRow.insertCell();
 
-                skuCell.textContent = code;
-                imeiCell.textContent = ''; // Set the IMEI (if available)
+                skuCell.textContent = sku;
+                imeiCell.textContent = imei;
                 timestampCell.textContent = new Date().toLocaleString();
 
                 alert(data.message);
