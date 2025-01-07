@@ -65,7 +65,7 @@ function isValidDealerCode(req, res, next) {
 
 function isAdmin(req, res, next) {
     // Check if the user is an admin and not a primary admin
-    if (req.session.isAdmin && !req.session.isPrimaryAdmin) {
+    if (req.session.isAdmin || req.session.isPrimaryAdmin) {
         return next();
     }
     res.status(403).send('Access Denied');
@@ -277,7 +277,14 @@ app.get('/auth/google/callback', async (req, res) => {
                         req.session.isAdmin = isAdmin;
                         req.session.isPrimaryAdmin = isPrimaryAdmin;
                         req.session.userId = this.lastID;
-                        res.redirect('/dashboard');
+                        req.session.storeId = null; // Set storeId to null for new users
+                        if (isPrimaryAdmin) {
+                            res.redirect('/dashboard');
+                        } else if (isAdmin) {
+                            res.redirect(`/store/undefined`); // Redirect to their store's page
+                        } else {
+                            res.redirect('/');
+                        }
                     });
                 } else {
                     // Existing user
@@ -294,7 +301,14 @@ app.get('/auth/google/callback', async (req, res) => {
                         req.session.isAdmin = isAdmin;
                         req.session.isPrimaryAdmin = isPrimaryAdmin;
                         req.session.userId = user.id;
-                        res.redirect('/dashboard');
+                        req.session.storeId = user.store_id;
+                        if (isPrimaryAdmin) {
+                            res.redirect('/dashboard');
+                        } else if (isAdmin) {
+                            res.redirect(`/store/${user.store_id}`);
+                        } else {
+                            res.redirect('/');
+                        }
                     });
                 }
             });
@@ -539,7 +553,7 @@ app.get('/store/:storeId', isAuthenticated, async (req, res) => {
     }
 
     // Only allow access if user is primary admin or store admin for the specific store
-    if (!req.session.isPrimaryAdmin && req.session.storeId !== storeId) {
+    if (!req.session.isPrimaryAdmin && req.session.storeId.toString() !== storeId) {
         return res.status(403).send('Access Denied');
     }
 
