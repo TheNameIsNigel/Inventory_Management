@@ -29,41 +29,35 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <% if (!dealerCodeAuthenticated) { %>
-            <div class="alert alert-warning">
-                Please authenticate with a valid dealer code. <a href="/dealer-login">Authenticate Now</a>
-            </div>
-        <% } else { %>
-            <div id="interactive" class="viewport"></div>
-            <div id="error-message" class="alert alert-danger" style="display: none;"></div>
-
-            <form action="/scan" method="post" id="scan-form">
-                <input type="hidden" id="scan-sku" name="sku">
-                <input type="hidden" id="scan-imei" name="imei">
-            </form>
-
-            <h2>Scanned Items</h2>
-            <table class="table" id="scan-table">
-                <thead>
+<div class="container">
+    <% if (!dealerCodeAuthenticated) { %>
+        <div class="alert alert-warning">
+            Please authenticate with a valid dealer code. <a href="/dealer-login">Authenticate Now</a>
+        </div>
+    <% } else { %>
+        <video id="interactive" class="viewport" style="width: 100%"></video>
+        
+        <h2>Scanned Items</h2>
+        <table class="table" id="scan-table">
+            <thead>
+                <tr>
+                    <th>SKU (UPC)</th>
+                    <th>IMEI</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% scans.forEach(function(scan) { %>
                     <tr>
-                        <th>SKU (UPC)</th>
-                        <th>IMEI</th>
-                        <th>Timestamp</th>
+                        <td><%= scan.sku %></td>
+                        <td><%= scan.imei %></td>
+                        <td><%= scan.timestamp %></td>
                     </tr>
-                </thead>
-                <tbody>
-                    <% scans.forEach(function(scan) { %>
-                        <tr>
-                            <td><%= scan.sku %></td>
-                            <td><%= scan.imei %></td>
-                            <td><%= scan.timestamp %></td>
-                        </tr>
-                    <% }); %>
-                </tbody>
-            </table>
-        <% } %>
-    </div>
+                <% }); %>
+            </tbody>
+        </table>
+    <% } %>
+</div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <script src="script.js"></script>
