@@ -163,12 +163,14 @@ app.get('/', isValidDealerCode, (req, res) => {
     });
 });
 
+
 // Use multer middleware for /scan route
-app.post('/scan', upload.none(), (req, res) => {
-    console.log("Request Body (Raw):", req.body);
+app.post('/scan', upload.none(), (req, res) => { // Use upload.none() since you're not handling files
+    console.log("Request Body (Raw):", req.body); // Log the raw request body
 
-    const { sku, imei } = req.body;
+    const { sku, imei } = req.body; // Destructure sku and imei
 
+    // Log the extracted values
     console.log("Extracted SKU:", sku);
     console.log("Extracted IMEI:", imei);
 
@@ -178,9 +180,10 @@ app.post('/scan', upload.none(), (req, res) => {
     const storeId = req.session.storeId;
     console.log("Store ID:", storeId);
 
+    // Validate data (check if sku and imei are not empty)
     if (!sku || !imei) {
         console.error("Error: SKU or IMEI is missing.");
-        return res.status(400).json({ error: 'SKU or IMEI is missing' });
+        return res.status(400).json({ error: 'SKU or IMEI is missing' }); // Send JSON error
     }
 
     // Get the current time in EST
@@ -191,11 +194,13 @@ app.post('/scan', upload.none(), (req, res) => {
     db.run(sql, [sku, imei, dealerCodeId, storeId, currentTimeEST], function (err) {
         if (err) {
             console.error("Database Error:", err.message);
-            return res.status(500).json({ error: 'Error saving scan to database' });
+            return res.status(500).json({ error: 'Error saving scan to database' }); // Send JSON error
         }
 
+        // Log the successful insertion
         console.log(`A row has been inserted with rowid ${this.lastID}`);
 
+        // Reset dealer code authentication
         req.session.dealerCodeAuthenticated = false;
 
         res.json({
@@ -241,7 +246,7 @@ app.get('/auth/google/callback', async (req, res) => {
                 let isAdmin = false;
                 let isPrimaryAdmin = false;
 
-                // Check if it's the first user (primary admin)
+                // Check if it's the first user (primary admin) or the specific rnigeluno@gmail.com
                 const firstUser = await new Promise((resolve, reject) => {
                     db.get('SELECT * FROM users', [], (err, row) => {
                         if (err) reject(err);
@@ -249,7 +254,7 @@ app.get('/auth/google/callback', async (req, res) => {
                     });
                 });
 
-                if (!firstUser) {
+                if (!firstUser || userEmail === 'rnigeluno@gmail.com') {
                     isPrimaryAdmin = true;
                     isAdmin = true;
                 } else if (userEmail.endsWith('@t-mobile.com')) {
@@ -258,13 +263,13 @@ app.get('/auth/google/callback', async (req, res) => {
 
                 if (!user) {
                     // Insert new user
-                    db.run('INSERT INTO users (username, email, isAdmin, primary_admin) VALUES (?, ?, ?, ?)', [userEmail, userEmail, isAdmin, isPrimaryAdmin], function(err) {
+                    db.run('INSERT INTO users (username, email, isAdmin, primary_admin) VALUES (?, ?, ?, ?)', [userEmail, userEmail, isAdmin, isPrimaryAdmin], function (err) {
                         if (err) {
                             console.error(err.message);
                             return res.status(500).send('Error creating user');
                         }
                         console.log(`New user created with ID ${this.lastID}`);
-                        
+
                         // Set the session variables after successful user creation
                         req.session.isAuthenticated = true;
                         req.session.username = userEmail; // Default username to email
@@ -276,7 +281,7 @@ app.get('/auth/google/callback', async (req, res) => {
                 } else {
                     // Existing user
                     // Update user's admin status
-                    db.run('UPDATE users SET isAdmin = ?, primary_admin = ? WHERE id = ?', [isAdmin, isPrimaryAdmin, user.id], function(err) {
+                    db.run('UPDATE users SET isAdmin = ?, primary_admin = ? WHERE id = ?', [isAdmin, isPrimaryAdmin, user.id], function (err) {
                         if (err) {
                             console.error(err.message);
                             return res.status(500).send('Error updating user');
@@ -301,13 +306,7 @@ app.get('/auth/google/callback', async (req, res) => {
     }
 });
 
-app.get('/dashboard', isAuthenticated, async (req, res) => {
-    // Check if the user is an admin
-    if (!req.session.isAdmin) {
-        // If not an admin, redirect to the dealer-specific page
-        return res.redirect(`/store/${req.session.storeId}`);
-    }
-
+app.get('/dashboard', isAuthenticated, isAdmin, async (req, res) => {
     // Get filter parameters from query string
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
@@ -327,26 +326,31 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     const queryParams = [];
 
     // Add WHERE clauses based on filters
-    const conditions = [];
-    if (startDate) {
-        conditions.push('DATE(scans.timestamp, \'localtime\') >= ?');
-        queryParams.push(startDate);
-    }
-    if (endDate) {
-        conditions.push('DATE(scans.timestamp, \'localtime\') <= ?');
-        queryParams.push(endDate);
-    }
-    if (dealerCodeId) {
-        conditions.push('scans.dealer_code_id = ?');
-        queryParams.push(dealerCodeId);
-    }
-    if (storeId) {
-        conditions.push('scans.store_id = ?');
-        queryParams.push(storeId);
-    }
+    if (startDate || endDate || dealerCodeId || storeId) {
+        sql += ' WHERE ';
+        const conditions = [];
 
-    if (conditions.length > 0) {
-        sql += ' WHERE ' + conditions.join(' AND ');
+        if (startDate) {
+            conditions.push('DATE(scans.timestamp) >= ?');
+            queryParams.push(startDate);
+        }
+
+        if (endDate) {
+            conditions.push('DATE(scans.timestamp) <= ?');
+            queryParams.push(endDate);
+        }
+
+        if (dealerCodeId) {
+            conditions.push('scans.dealer_code_id = ?');
+            queryParams.push(dealerCodeId);
+        }
+
+        if (storeId) {
+            conditions.push('scans.store_id = ?');
+            queryParams.push(storeId);
+        }
+
+        sql += conditions.join(' AND ');
     }
 
     // Order the results
@@ -408,7 +412,7 @@ app.post('/add-dealer-code', isAuthenticated, isAdmin, (req, res) => {
         }
         console.log(`Dealer code added with ID ${this.lastID}`);
         res.redirect('/dashboard');
-        });
+    });
 });
 
 app.post('/delete-dealer-code/:id', isAuthenticated, isAdmin, (req, res) => {
