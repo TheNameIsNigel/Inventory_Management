@@ -10,9 +10,11 @@ let db = new sqlite3.Database('./scans.db', (err) => {
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS scans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT,
-        value TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        sku TEXT,
+        imei TEXT,
+        dealer_code_id INTEGER,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(dealer_code_id) REFERENCES dealer_codes(id)
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -21,15 +23,13 @@ db.serialize(() => {
         email TEXT UNIQUE
     )`);
 
-    // Create the dealer_codes table if it doesn't exist
     db.run(`CREATE TABLE IF NOT EXISTS dealer_codes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         code TEXT UNIQUE NOT NULL
     )`);
 
-    // Insert an initial admin user if it doesn't exist
     const adminUsername = 'rnigeluno';
-    const adminEmail = 'rnigeluno@gmail.com'; // Replace with the actual admin email
+    const adminEmail = 'rnigeluno@gmail.com';
 
     db.get('SELECT id FROM users WHERE username = ?', [adminUsername], (err, row) => {
         if (err) {

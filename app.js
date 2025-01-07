@@ -7,21 +7,16 @@ const fs = require('fs');
 const app = express();
 
 const httpPort = 3000;
-
-// Load client secrets from a local file.
-const credentials = require('./credentials.json'); // Downloaded from Google Cloud Console
+const credentials = require('./credentials.json');
 const { client_secret, client_id, redirect_uris } = credentials.web;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
-// In-memory storage for failed login attempts
 const failedLoginAttempts = {};
-
-// Middleware to check for blocked IPs
 function checkFailedLogins(req, res, next) {
     const ip = req.ip;
 
     if (failedLoginAttempts[ip] && failedLoginAttempts[ip].attempts >= 3) {
-        const lockoutTime = 300; // 5 minutes
+        const lockoutTime = 300;
         const timeElapsed = (Date.now() - failedLoginAttempts[ip].timestamp) / 1000;
 
         if (timeElapsed < lockoutTime) {
@@ -35,13 +30,12 @@ function checkFailedLogins(req, res, next) {
     next();
 }
 
-// Session Configuration
 app.use(session({
     secret: 'your-secret-key',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: false, // Set to true when using HTTPS
+        secure: false,
         httpOnly: true,
         maxAge: 1000 * 60 * 60 * 24
     }
@@ -51,7 +45,6 @@ app.set('view engine', 'ejs');
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 
-// Authentication Middleware (for dashboard)
 function isAuthenticated(req, res, next) {
     if (req.session.isAuthenticated) {
         return next();
@@ -59,7 +52,6 @@ function isAuthenticated(req, res, next) {
     res.redirect('/login');
 }
 
-// Dealer Code Check Middleware
 function isValidDealerCode(req, res, next) {
     if (req.session.dealerCodeAuthenticated) {
         return next();
@@ -67,20 +59,15 @@ function isValidDealerCode(req, res, next) {
     res.redirect('/dealer-login');
 }
 
-// Routes
-
-// Dealer Login Page
 app.get('/dealer-login', (req, res) => {
     res.render('dealer-login');
 });
 
-// Dealer Login Check
 app.post('/dealer-login', checkFailedLogins, async (req, res) => {
     const { dealerCode } = req.body;
     const ip = req.ip;
 
     try {
-        // Check if the dealer code exists in the database
         const dealerCodeRecord = await new Promise((resolve, reject) => {
             db.get('SELECT * FROM dealer_codes WHERE code = ?', [dealerCode], (err, row) => {
                 if (err) reject(err);
@@ -89,13 +76,11 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
         });
 
         if (dealerCodeRecord) {
-            // Reset failed attempts
             delete failedLoginAttempts[ip];
-
             req.session.dealerCodeAuthenticated = true;
+            req.session.dealerCodeId = dealerCodeRecord.id;
             res.redirect('/');
         } else {
-            // Increment failed attempts
             failedLoginAttempts[ip] = failedLoginAttempts[ip] || { attempts: 0, timestamp: Date.now() };
             failedLoginAttempts[ip].attempts++;
             failedLoginAttempts[ip].timestamp = Date.now();
@@ -113,7 +98,6 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
     }
 });
 
-// Scanner Page (Requires Dealer Code Authentication)
 app.get('/', isValidDealerCode, (req, res) => {
     db.all('SELECT * FROM scans', [], (err, rows) => {
         if (err) {
@@ -123,22 +107,19 @@ app.get('/', isValidDealerCode, (req, res) => {
     });
 });
 
-// Scan Route (Logs out after each scan)
 app.post('/scan', (req, res) => {
-    const { type, value } = req.body;
+    const { sku, imei } = req.body;
+    const dealerCodeId = req.session.dealerCodeId;
 
-    // Store the scan in the database
-    db.run('INSERT INTO scans (type, value) VALUES (?, ?)', [type, value], function (err) {
+    db.run('INSERT INTO scans (sku, imei, dealer_code_id) VALUES (?, ?, ?)', [sku, imei, dealerCodeId], function (err) {
         if (err) {
             console.error(err.message);
             return res.status(500).send('Error saving scan to database.');
         }
         console.log(`A row has been inserted with rowid ${this.lastID}`);
 
-        // Invalidate dealer code authentication
         req.session.dealerCodeAuthenticated = false;
 
-        // Send a JSON response indicating success and the need to log in again
         res.json({ 
             success: true, 
             message: 'Scan successful. Please log in again for the next scan.',
@@ -147,16 +128,14 @@ app.post('/scan', (req, res) => {
     });
 });
 
-// Google Login URL
 app.get('/login', (req, res) => {
     const authUrl = oAuth2Client.generateAuthUrl({
         access_type: 'offline',
-        scope: ['profile', 'email'] // Request profile and email scopes
+        scope: ['profile', 'email']
     });
     res.redirect(authUrl);
 });
 
-// Google Callback Route
 app.get('/auth/google/callback', async (req, res) => {
     const { code } = req.query;
 
@@ -164,20 +143,17 @@ app.get('/auth/google/callback', async (req, res) => {
         const { tokens } = await oAuth2Client.getToken(code);
         oAuth2Client.setCredentials(tokens);
 
-        // Get user info from Google
         const people = google.people({ version: 'v1', auth: oAuth2Client });
         const { data } = await people.people.get({
             resourceName: 'people/me',
             personFields: 'emailAddresses,names',
         });
 
-        // Check if user's email is allowed
         const userEmail = data.emailAddresses && data.emailAddresses.length > 0
             ? data.emailAddresses[0].value
             : null;
 
         if (userEmail) {
-            // Check if the user's email exists in the database
             db.get('SELECT * FROM users WHERE email = ?', [userEmail], (err, user) => {
                 if (err) {
                     console.error(err.message);
@@ -185,12 +161,10 @@ app.get('/auth/google/callback', async (req, res) => {
                 }
 
                 if (user) {
-                    // User exists, proceed with setting session variables
                     req.session.isAuthenticated = true;
-                    req.session.username = user.username; // Or use the user's name from Google
+                    req.session.username = user.username;
                     res.redirect('/dashboard');
                 } else {
-                    // User does not exist, send an unauthorized error
                     res.status(403).send('User not authorized');
                 }
             });
@@ -203,18 +177,15 @@ app.get('/auth/google/callback', async (req, res) => {
     }
 });
 
-// Dashboard Route
 app.get('/dashboard', isAuthenticated, async (req, res) => {
     try {
-        // Fetch scans from the database
         const scans = await new Promise((resolve, reject) => {
-            db.all('SELECT * FROM scans', [], (err, rows) => {
+            db.all('SELECT scans.*, dealer_codes.code AS dealerCode FROM scans LEFT JOIN dealer_codes ON scans.dealer_code_id = dealer_codes.id', [], (err, rows) => {
                 if (err) reject(err);
                 resolve(rows);
             });
         });
 
-        // Fetch dealer codes from the database
         const dealerCodes = await new Promise((resolve, reject) => {
             db.all('SELECT * FROM dealer_codes', [], (err, rows) => {
                 if (err) reject(err);
@@ -222,7 +193,6 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
             });
         });
 
-        // Render the dashboard view and pass the data
         res.render('dashboard', { scans, username: req.session.username, dealerCodes });
     } catch (err) {
         console.error('Error fetching data from the database:', err.message);
@@ -230,7 +200,6 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     }
 });
 
-// Add Dealer Code Route
 app.post('/add-dealer-code', isAuthenticated, (req, res) => {
     const { dealerCode } = req.body;
 
@@ -244,7 +213,6 @@ app.post('/add-dealer-code', isAuthenticated, (req, res) => {
     });
 });
 
-// Delete Dealer Code Route
 app.post('/delete-dealer-code/:id', isAuthenticated, (req, res) => {
     const { id } = req.params;
 
@@ -268,7 +236,6 @@ app.get('/logout', (req, res) => {
     });
 });
 
-// Create HTTP server
 app.listen(httpPort, () => {
     console.log(`HTTP server running at http://localhost:${httpPort}`);
 });

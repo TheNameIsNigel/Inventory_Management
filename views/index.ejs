@@ -7,16 +7,14 @@
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
-        /* Styling for the scanner viewport */
         #interactive.viewport {
             position: relative;
             width: 100%;
             height: auto;
             overflow: hidden;
-            margin: 0 auto; /* Center the video */
+            margin: 0 auto;
         }
 
-        /* Styling for the video and canvas elements */
         #interactive.viewport video, #interactive.viewport canvas {
             position: absolute;
             top: 0;
@@ -25,9 +23,8 @@
             height: 100%;
         }
 
-        /* Specific styling for the drawingBuffer canvas */
         #interactive.viewport canvas.drawingBuffer {
-            z-index: 1; /* Ensure the drawing buffer is above the video */
+            z-index: 1;
         }
     </style>
 </head>
@@ -42,26 +39,24 @@
             <div id="error-message" class="alert alert-danger" style="display: none;"></div>
 
             <form action="/scan" method="post" id="scan-form">
-                <input type="hidden" id="scan-type" name="type">
-                <input type="hidden" id="scan-value" name="value">
+                <input type="hidden" id="scan-sku" name="sku">
+                <input type="hidden" id="scan-imei" name="imei">
             </form>
 
             <h2>Scanned Items</h2>
             <table class="table" id="scan-table">
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Type</th>
-                        <th>Value</th>
+                        <th>SKU (UPC)</th>
+                        <th>IMEI</th>
                         <th>Timestamp</th>
                     </tr>
                 </thead>
                 <tbody>
                     <% scans.forEach(function(scan) { %>
                         <tr>
-                            <td><%= scan.id %></td>
-                            <td><%= scan.type %></td>
-                            <td><%= scan.value %></td>
+                            <td><%= scan.sku %></td>
+                            <td><%= scan.imei %></td>
                             <td><%= scan.timestamp %></td>
                         </tr>
                     <% }); %>

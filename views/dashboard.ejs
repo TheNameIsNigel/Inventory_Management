@@ -18,7 +18,7 @@
             opacity: 0.5;
             font-size: 14px;
             color: #666;
-            z-index: 99; /* Ensure it's below other content */
+            z-index: 99;
         }
     </style>
 </head>
@@ -57,18 +57,18 @@
         <table class="table">
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>Type</th>
-                    <th>Value</th>
+                    <th>SKU (UPC)</th>
+                    <th>IMEI</th>
+                    <th>Dealer Code</th>
                     <th>Timestamp</th>
                 </tr>
             </thead>
             <tbody>
                 <% scans.forEach(function(scan) { %>
                     <tr>
-                        <td><%= scan.id %></td>
-                        <td><%= scan.type %></td>
-                        <td><%= scan.value %></td>
+                        <td><%= scan.sku %></td>
+                        <td><%= scan.imei %></td>
+                        <td><%= scan.dealerCode %></td>
                         <td><%= scan.timestamp %></td>
                     </tr>
                 <% }); %>
@@ -88,8 +88,8 @@
             document.getElementById('current-time').textContent = timeString;
         }
 
-        updateTime(); // Initial update
-        setInterval(updateTime, 1000); // Update every second
+        updateTime();
+        setInterval(updateTime, 1000);
     </script>
 </body>
 </html>
