@@ -53,23 +53,23 @@
             </div>
         </div>
 
-        <h2>Scanned Products</h2>
+        <h2>Scanned Items</h2>
         <table class="table">
             <thead>
                 <tr>
-                    <th>SKU/UPC</th>
-                    <th>IMEI</th>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Value</th>
                     <th>Timestamp</th>
-                    <th>Dealer Code</th>
                 </tr>
             </thead>
             <tbody>
                 <% scans.forEach(function(scan) { %>
                     <tr>
-                        <td><%= scan.type === 'UPC' ? scan.value : '' %></td>
-                        <td><%= scan.type === 'IMEI' ? scan.value : '' %></td>
+                        <td><%= scan.id %></td>
+                        <td><%= scan.type %></td>
+                        <td><%= scan.value %></td>
                         <td><%= scan.timestamp %></td>
-                        <td><%= scan.dealer_code %></td>
                     </tr>
                 <% }); %>
             </tbody>

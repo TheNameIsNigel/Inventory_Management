@@ -49,23 +49,24 @@
             <form action="/scan" method="post" id="scan-form">
                 <input type="hidden" id="scan-type" name="type">
                 <input type="hidden" id="scan-value" name="value">
-                <input type="hidden" id="scan-dealer-code" name="dealerCode" value="<%= dealerCode %>">
             </form>
 
-            <h2>Scanned Products</h2>
+            <h2>Scanned Items</h2>
             <table class="table" id="scan-table">
                 <thead>
                     <tr>
-                        <th>SKU/UPC</th>
-                        <th>IMEI</th>
+                        <th>ID</th>
+                        <th>Type</th>
+                        <th>Value</th>
                         <th>Timestamp</th>
                     </tr>
                 </thead>
                 <tbody>
                     <% scans.forEach(function(scan) { %>
                         <tr>
-                            <td><%= scan.type === 'UPC' ? scan.value : '' %></td>
-                            <td><%= scan.type === 'IMEI' ? scan.value : '' %></td>
+                            <td><%= scan.id %></td>
+                            <td><%= scan.type %></td>
+                            <td><%= scan.value %></td>
                             <td><%= scan.timestamp %></td>
                         </tr>
                     <% }); %>

@@ -92,9 +92,7 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
             // Reset failed attempts
             delete failedLoginAttempts[ip];
 
-            // Set the dealer code in the session
             req.session.dealerCodeAuthenticated = true;
-            req.session.dealerCode = dealerCode;
             res.redirect('/');
         } else {
             // Increment failed attempts
@@ -117,37 +115,32 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
 
 // Scanner Page (Requires Dealer Code Authentication)
 app.get('/', isValidDealerCode, (req, res) => {
-    const dealerCode = req.session.dealerCode;
-
-    // Fetch only the scans for the current session's dealer code
-    db.all('SELECT * FROM scans WHERE dealer_code = ?', [dealerCode], (err, rows) => {
+    db.all('SELECT * FROM scans', [], (err, rows) => {
         if (err) {
-            console.error(err);
-            return res.status(500).send('Error retrieving scans from database');
+            throw err;
         }
-        res.render('index', { scans: rows, dealerCodeAuthenticated: true, dealerCode: dealerCode });
+        res.render('index', { scans: rows, dealerCodeAuthenticated: req.session.dealerCodeAuthenticated });
     });
 });
 
 // Scan Route (Logs out after each scan)
-app.post('/scan', isValidDealerCode, (req, res) => {
+app.post('/scan', (req, res) => {
     const { type, value } = req.body;
-    const dealerCode = req.session.dealerCode;
 
-    // Store the scan in the database with the associated dealer code
-    db.run('INSERT INTO scans (type, value, dealer_code) VALUES (?, ?, ?)', [type, value, dealerCode], function (err) {
+    // Store the scan in the database
+    db.run('INSERT INTO scans (type, value) VALUES (?, ?)', [type, value], function (err) {
         if (err) {
             console.error(err.message);
             return res.status(500).send('Error saving scan to database.');
         }
-        console.log(`A row has been inserted with rowid ${this.lastID}, associated with dealer code ${dealerCode}`);
+        console.log(`A row has been inserted with rowid ${this.lastID}`);
 
         // Invalidate dealer code authentication
         req.session.dealerCodeAuthenticated = false;
 
         // Send a JSON response indicating success and the need to log in again
-        res.json({
-            success: true,
+        res.json({ 
+            success: true, 
             message: 'Scan successful. Please log in again for the next scan.',
             redirect: '/'
         });
@@ -235,4 +228,47 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
         console.error('Error fetching data from the database:', err.message);
         res.status(500).send('Error retrieving data from the database');
     }
+});
+
+// Add Dealer Code Route
+app.post('/add-dealer-code', isAuthenticated, (req, res) => {
+    const { dealerCode } = req.body;
+
+    db.run('INSERT INTO dealer_codes (code) VALUES (?)', [dealerCode], function(err) {
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send('Error adding dealer code.');
+        }
+        console.log(`Dealer code added with ID ${this.lastID}`);
+        res.redirect('/dashboard');
+    });
+});
+
+// Delete Dealer Code Route
+app.post('/delete-dealer-code/:id', isAuthenticated, (req, res) => {
+    const { id } = req.params;
+
+    db.run('DELETE FROM dealer_codes WHERE id = ?', [id], function(err) {
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send('Error deleting dealer code.');
+        }
+        console.log(`Dealer code with ID ${id} deleted`);
+        res.redirect('/dashboard');
+    });
+});
+
+app.get('/logout', (req, res) => {
+    req.session.destroy(err => {
+        if (err) {
+            console.error('Logout error:', err);
+            return res.status(500).send('Logout failed');
+        }
+        res.redirect('/login');
+    });
+});
+
+// Create HTTP server
+app.listen(httpPort, () => {
+    console.log(`HTTP server running at http://localhost:${httpPort}`);
 });
