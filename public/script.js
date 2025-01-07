@@ -1,26 +1,34 @@
-import { BrowserMultiFormatReader } from '@zxing/library';
+import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
 
 document.addEventListener('DOMContentLoaded', () => {
     const codeReader = new BrowserMultiFormatReader();
-    const videoElement = document.querySelector('#interactive');
+    const videoElement = document.getElementById('interactive');
 
     function startScan() {
         codeReader
-            .decodeOnceFromVideoDevice(undefined, videoElement)
-            .then((result) => {
-                alert(`Code scanned: ${result.text}`);
-                processScannedCode(result.text, result.resultMetadata);
-                startScan();  // Restart the scanner
+            .listVideoInputDevices()
+            .then((videoInputDevices) => {
+                const selectedDeviceId = videoInputDevices[0].deviceId;
+                codeReader.decodeFromVideoDevice(selectedDeviceId, videoElement, (result, err) => {
+                    if (result) {
+                        console.log('Code scanned:', result.text);
+                        processScannedCode(result.text);
+                        // Do not automatically restart the scan
+                    }
+                    if (err && !(err instanceof NotFoundException)) {
+                        console.error('Error scanning barcode: ', err);
+                    }
+                });
             })
             .catch((err) => {
-                console.error('Error scanning barcode: ', err);
+                console.error('Error listing video devices or decoding: ', err);
             });
     }
 
-    function processScannedCode(code, metadata) {
+    function processScannedCode(code) {
         const formData = new FormData();
-        formData.append('sku', code);  // Assuming SKU here; adapt as needed
-        formData.append('imei', '');  // Empty or adjust based on your detection logic
+        formData.append('sku', code); // Assuming SKU; adjust as needed
+        formData.append('imei', ''); // Adjust based on your logic
 
         fetch('/scan', {
             method: 'POST',
@@ -46,7 +54,11 @@ document.addEventListener('DOMContentLoaded', () => {
             videoElement.srcObject = stream;
             videoElement.setAttribute('playsinline', true); // Required for iOS
             videoElement.play();
-            startScan();
         })
-        .catch((err) => console.error('Error accessing video stream: ', err));
+        .catch((err) => {
+            console.error('Error accessing video stream: ', err);
+        });
+
+        //Button to start the scanning process
+        document.getElementById('startButton').addEventListener('click', startScan);
 });

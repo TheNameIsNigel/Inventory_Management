@@ -16,5 +16,8 @@
     "express-session": "^1.17.3",
     "googleapis": "^128.0.0",
     "sqlite3": "^5.1.6"
-  }
+  },
+  "scripts": {
+  "build": "webpack"
+}
 }
