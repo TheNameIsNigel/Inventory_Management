@@ -61,28 +61,53 @@ document.addEventListener('DOMContentLoaded', () => {
         codeReader.decodeFromVideoDevice(selectedDeviceId, videoElement, (result, err) => {
             if (result) {
                 console.log('Barcode detected:', result.text);
-                scannedData = { code: result.text, type: null }; // Store scanned code, determine type later
                 stopScan();
-                processScannedCode(result.text);
+                if (scannedData === null) {
+                    let type = '';
+                    if (result.text.length === 12) {
+                        type = 'UPC';
+                    } else if (result.text.length === 15) {
+                        type = 'IMEI';
+                    } else {
+                        type = 'UNKNOWN';
+                    }
+                    scannedData = { code: result.text, type: type };
+                    if (type === 'UPC') {
+                        alert('Please scan IMEI.');
+                        setTimeout(() => {
+                            startScan();
+                        }, 1000);
+                    } else if (type === 'IMEI') {
+                        alert('Please scan UPC.');
+                        setTimeout(() => {
+                            startScan();
+                        }, 1000);
+                    } else {
+                        alert('Unknown code scanned');
+                        scannedData = null;
+                    }
+                } else {
+                    processScannedCode(result.text);
+                }
             }
             if (err && !(err instanceof NotFoundException)) {
                 console.error('Error scanning barcode: ', err);
             }
         })
-            .then(() => {
-                // The decodeFromVideoDevice promise is resolved which means it's not scanning anymore
-                // Use an interval as a fallback to restart scanning if needed
-                scanInterval = setInterval(() => {
-                    if (!isScanning) {
-                        console.log('Restarting scan from interval');
-                        startScan();
-                    }
-                }, 1000); // Adjust interval as needed
-            })
-            .catch((err) => {
-                console.error('Error during decoding: ', err);
-                isScanning = false;
-            });
+        .then(() => {
+            // The decodeFromVideoDevice promise is resolved which means it's not scanning anymore
+            // Use an interval as a fallback to restart scanning if needed
+            scanInterval = setInterval(() => {
+                if (!isScanning) {
+                    console.log('Restarting scan from interval');
+                    startScan();
+                }
+            }, 1000); // Adjust interval as needed
+        })
+        .catch((err) => {
+            console.error('Error during decoding: ', err);
+            isScanning = false;
+        });
     }
 
     captureButton.addEventListener('click', () => {
@@ -96,6 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function processScannedCode(code) {
+        // Second code scanned
         let type = '';
         if (code.length === 12) {
             type = 'UPC';
@@ -104,94 +130,89 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             type = 'UNKNOWN';
         }
-
-        if (scannedData === null) {
-            // First code scanned
-            scannedData = { code: code, type: type };
-            if (type === 'UPC') {
-                alert('Please scan IMEI.');
-            } else if (type === 'IMEI') {
-                alert('Please scan UPC.');
-            } else {
-                alert('Unknown code scanned');
-                scannedData = null;
-            }
+        if (type === scannedData.type) {
+            // Duplicate scan
+            alert('Duplicate scan detected. Please scan the other code.');
+            scannedData = null; // Clear scannedData
+            setTimeout(() => {
+                startScan();
+            }, 1000);
+        } else if (type === 'UNKNOWN') {
+            // Unknown code scanned
+            alert('Unknown code scanned. Please scan a valid UPC or IMEI.');
+            scannedData = null; // Clear scannedData
+            setTimeout(() => {
+                startScan();
+            }, 1000);
         } else {
-            // Second code scanned
-            if (type === scannedData.type) {
-                // Duplicate scan
-                alert('Duplicate scan detected. Please scan the other code.');
-                scannedData = null; // Clear scannedData
+            // UPC and IMEI scanned
+            let sku = '';
+            let imei = '';
+
+            if (type === 'UPC') {
+                sku = code;
+                imei = scannedData.code;
             } else {
-                // UPC and IMEI scanned
-                let sku = '';
-                let imei = '';
-
-                if (type === 'UPC') {
-                    sku = code;
-                    imei = scannedData.code;
-                } else {
-                    sku = scannedData.code;
-                    imei = code;
-                }
-
-                const formData = new FormData();
-                formData.append('sku', sku);
-                formData.append('imei', imei);
-
-                // Log the values being appended
-                console.log("Appending to FormData - SKU:", sku, "IMEI:", imei);
-
-                // Convert formData to a plain object for logging
-                let formDataObject = {};
-                formData.forEach((value, key) => {
-                    formDataObject[key] = value;
-                });
-                console.log("FormData as object:", formDataObject);
-
-                fetch('/scan', {
-                    method: 'POST',
-                    body: formData
-                })
-                    .then(response => {
-                        if (!response.ok) {
-                            // Log the response status and text for debugging
-                            console.error('HTTP error! status:', response.status);
-                            return response.text().then(text => {
-                                console.error('Response text:', text);
-                                throw new Error(text); // Throw error to be caught by catch block
-                            });
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data.success) {
-                            const tableBody = document.getElementById('scan-table-body');
-                            const newRow = tableBody.insertRow();
-                            const skuCell = newRow.insertCell();
-                            const imeiCell = newRow.insertCell();
-                            const timestampCell = newRow.insertCell();
-
-                            skuCell.textContent = sku;
-                            imeiCell.textContent = imei;
-                            timestampCell.textContent = new Date().toLocaleString();
-
-                            alert(data.message);
-                            scannedData = null; // Clear scannedData
-                        } else {
-                            console.error('Scan failed: ', data.message);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error submitting scan: ', error);
-                    })
-                    .finally(() => {
-                        // Restart the scan after processing
-                        setTimeout(() => {
-                            startScan();
-                        }, 1000);
-                    });
+                sku = scannedData.code;
+                imei = code;
             }
+
+            const formData = new FormData();
+            formData.append('sku', sku);
+            formData.append('imei', imei);
+
+            // Log the values being appended
+            console.log("Appending to FormData - SKU:", sku, "IMEI:", imei);
+
+            // Convert formData to a plain object for logging
+            let formDataObject = {};
+            formData.forEach((value, key) => {
+                formDataObject[key] = value;
+            });
+            console.log("FormData as object:", formDataObject);
+
+            fetch('/scan', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    // Log the response status and text for debugging
+                    console.error('HTTP error! status:', response.status);
+                    return response.text().then(text => {
+                        console.error('Response text:', text);
+                        throw new Error(text); // Throw error to be caught by catch block
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    const tableBody = document.getElementById('scan-table-body');
+                    const newRow = tableBody.insertRow();
+                    const skuCell = newRow.insertCell();
+                    const imeiCell = newRow.insertCell();
+                    const timestampCell = newRow.insertCell();
+
+                    skuCell.textContent = sku;
+                    imeiCell.textContent = imei;
+                    timestampCell.textContent = new Date().toLocaleString();
+
+                    alert(data.message);
+                    scannedData = null; // Clear scannedData
+                } else {
+                    console.error('Scan failed: ', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error submitting scan: ', error);
+            })
+            .finally(() => {
+                // Restart the scan after processing
+                setTimeout(() => {
+                    startScan();
+                }, 1000);
+            });
         }
     }
 
@@ -211,4 +232,4 @@ document.addEventListener('DOMContentLoaded', () => {
         .catch((err) => {
             console.error('Error accessing video stream: ', err);
         });
-});
+    });
