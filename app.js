@@ -641,7 +641,7 @@ app.get('/logout', (req, res) => {
             console.error('Logout error:', err);
             return res.status(500).send('Logout failed');
         }
-        res.redirect('/login');
+        res.redirect('/dealer-login'); // Redirect to dealer-login after logout
     });
 });
 
