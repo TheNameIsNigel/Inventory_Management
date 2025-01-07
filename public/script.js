@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let scannedData = null;
     let isScanning = false; // Flag to control scanning
     let scanInterval;
+    let selectedDeviceId;
 
     // Register the service worker
     if ('serviceWorker' in navigator) {
@@ -29,24 +30,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
         console.log('Listing video devices...');
         codeReader.listVideoInputDevices()
-        .then((videoInputDevices) => {
-            console.log('Video input devices:', videoInputDevices);
+            .then((videoInputDevices) => {
+                console.log('Video input devices:', videoInputDevices);
+                selectedDeviceId = null;
 
-            // Select the back/environment camera if available
-            let selectedDeviceId = videoInputDevices[0].deviceId; // Default to the first camera
-            const backCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment'));
+                // Select the back/environment camera if available
+                const backCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment'));
 
-            if (backCamera) {
-                selectedDeviceId = backCamera.deviceId;
-            }
+                if (backCamera) {
+                    selectedDeviceId = backCamera.deviceId;
+                }
 
-            console.log('Starting scan with device:', selectedDeviceId);
-            isScanning = true;
-            startDecoding(selectedDeviceId);
-        })
-        .catch((err) => {
-            console.error('Error listing video devices or decoding: ', err);
-        });
+                console.log('Starting scan with device:', selectedDeviceId);
+                isScanning = true;
+                startDecoding(selectedDeviceId);
+            })
+            .catch((err) => {
+                console.error('Error listing video devices or decoding: ', err);
+            });
     }
 
     function stopScan() {
@@ -68,20 +69,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Error scanning barcode: ', err);
             }
         })
-        .then(() => {
-            // The decodeFromVideoDevice promise is resolved which means it's not scanning anymore
-            // Use an interval as a fallback to restart scanning if needed
-            scanInterval = setInterval(() => {
-                if (!isScanning) {
-                    console.log('Restarting scan from interval');
-                    startScan();
-                }
-            }, 1000); // Adjust interval as needed
-        })
-        .catch((err) => {
-            console.error('Error during decoding: ', err);
-            isScanning = false;
-        });
+            .then(() => {
+                // The decodeFromVideoDevice promise is resolved which means it's not scanning anymore
+                // Use an interval as a fallback to restart scanning if needed
+                scanInterval = setInterval(() => {
+                    if (!isScanning) {
+                        console.log('Restarting scan from interval');
+                        startScan();
+                    }
+                }, 1000); // Adjust interval as needed
+            })
+            .catch((err) => {
+                console.error('Error during decoding: ', err);
+                isScanning = false;
+            });
     }
 
     captureButton.addEventListener('click', () => {
@@ -152,44 +153,44 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     body: formData
                 })
-                .then(response => {
-                    if (!response.ok) {
-                        // Log the response status and text for debugging
-                        console.error('HTTP error! status:', response.status);
-                        return response.text().then(text => {
-                            console.error('Response text:', text);
-                            throw new Error(text); // Throw error to be caught by catch block
-                        });
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.success) {
-                        const tableBody = document.getElementById('scan-table-body');
-                        const newRow = tableBody.insertRow();
-                        const skuCell = newRow.insertCell();
-                        const imeiCell = newRow.insertCell();
-                        const timestampCell = newRow.insertCell();
+                    .then(response => {
+                        if (!response.ok) {
+                            // Log the response status and text for debugging
+                            console.error('HTTP error! status:', response.status);
+                            return response.text().then(text => {
+                                console.error('Response text:', text);
+                                throw new Error(text); // Throw error to be caught by catch block
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.success) {
+                            const tableBody = document.getElementById('scan-table-body');
+                            const newRow = tableBody.insertRow();
+                            const skuCell = newRow.insertCell();
+                            const imeiCell = newRow.insertCell();
+                            const timestampCell = newRow.insertCell();
 
-                        skuCell.textContent = sku;
-                        imeiCell.textContent = imei;
-                        timestampCell.textContent = new Date().toLocaleString();
+                            skuCell.textContent = sku;
+                            imeiCell.textContent = imei;
+                            timestampCell.textContent = new Date().toLocaleString();
 
-                        alert(data.message);
-                        scannedData = null; // Clear scannedData
-                    } else {
-                        console.error('Scan failed: ', data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error submitting scan: ', error);
-                })
-                .finally(() => {
-                    // Restart the scan after processing
-                    setTimeout(() => {
-                        startScan();
-                    }, 1000);
-                });
+                            alert(data.message);
+                            scannedData = null; // Clear scannedData
+                        } else {
+                            console.error('Scan failed: ', data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error submitting scan: ', error);
+                    })
+                    .finally(() => {
+                        // Restart the scan after processing
+                        setTimeout(() => {
+                            startScan();
+                        }, 1000);
+                    });
             }
         }
     }
@@ -210,4 +211,4 @@ document.addEventListener('DOMContentLoaded', () => {
         .catch((err) => {
             console.error('Error accessing video stream: ', err);
         });
-    });
+});
