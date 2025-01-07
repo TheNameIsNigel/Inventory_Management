@@ -5,6 +5,8 @@ const session = require('express-session');
 const { google } = require('googleapis');
 const fs = require('fs');
 const app = express();
+const multer = require('multer'); // Import multer
+const upload = multer(); // Create a multer instance
 
 const httpPort = 3000;
 const credentials = require('./credentials.json');
@@ -108,12 +110,11 @@ app.get('/', isValidDealerCode, (req, res) => {
     });
 });
 
-app.post('/scan', (req, res) => {
-    console.log("Headers:", req.headers);
-    console.log("Raw Request Body:", req.body);
+// Use multer middleware for /scan route
+app.post('/scan', upload.none(), (req, res) => { // Use upload.none() since you're not handling files
+    console.log("Request Body (Raw):", req.body); // Log the raw request body
 
-    // Destructure sku and imei from the request body
-    const { sku, imei } = req.body;
+    const { sku, imei } = req.body; // Destructure sku and imei
 
     // Log the extracted values
     console.log("Extracted SKU:", sku);
@@ -125,7 +126,7 @@ app.post('/scan', (req, res) => {
     // Validate data (check if sku and imei are not empty)
     if (!sku || !imei) {
         console.error("Error: SKU or IMEI is missing.");
-        return res.status(400).json({ error: 'SKU or IMEI is missing' });
+        return res.status(400).json({ error: 'SKU or IMEI is missing' }); // Send JSON error
     }
 
     // Use parameterized query to prevent SQL injection
@@ -133,7 +134,7 @@ app.post('/scan', (req, res) => {
     db.run(sql, [sku, imei, dealerCodeId], function (err) {
         if (err) {
             console.error("Database Error:", err.message);
-            return res.status(500).json({ error: 'Error saving scan to database' });
+            return res.status(500).json({ error: 'Error saving scan to database' }); // Send JSON error
         }
 
         // Log the successful insertion
