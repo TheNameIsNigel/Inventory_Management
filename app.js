@@ -4,8 +4,6 @@ const path = require('path');
 const session = require('express-session');
 const { google } = require('googleapis');
 const fs = require('fs');
-const Sentry = require("@sentry/node");
-const { ProfilingIntegration } = require("@sentry/profiling-node");
 const app = express();
 
 const httpPort = 3000;
@@ -14,20 +12,6 @@ const httpPort = 3000;
 const credentials = require('./credentials.json'); // Downloaded from Google Cloud Console
 const { client_secret, client_id, redirect_uris } = credentials.web;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-
-// Initialize Sentry
-Sentry.init({
-    dsn: "YOUR_SENTRY_DSN", // Replace with your Sentry DSN
-    integrations: [
-        new ProfilingIntegration(),
-        new Sentry.Integrations.Http({ tracing: true }),
-        new Sentry.Integrations.Express({ app }),
-        ...Sentry.autoDiscoverNodePerformanceMonitoringIntegrations(),
-    ],
-    tracesSampleRate: 1.0,
-    profilesSampleRate: 1.0,
-    environment: process.env.NODE_ENV || "development", // Set environment
-});
 
 // In-memory storage for failed login attempts
 const failedLoginAttempts = {};
@@ -53,32 +37,19 @@ function checkFailedLogins(req, res, next) {
 
 // Session Configuration
 app.use(session({
-    secret: 'your-secret-key', // Replace with a strong, random secret
+    secret: 'your-secret-key',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: false, // Set to true when using HTTPS behind a reverse proxy
+        secure: false, // Set to true when using HTTPS
         httpOnly: true,
         maxAge: 1000 * 60 * 60 * 24
     }
 }));
 
-// Add Sentry request handler as the first middleware
-app.use(Sentry.Handlers.requestHandler());
-
-// Add Sentry tracing handler
-app.use(Sentry.Handlers.tracingHandler());
-
 app.set('view engine', 'ejs');
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
-
-// Global error handler (should be after all routes)
-app.use(function onError(err, req, res, next) {
-    console.error(err.stack); // Log the error stack for debugging
-    Sentry.captureException(err); // Send error to Sentry
-    res.status(500).send('Something broke!');
-});
 
 // Authentication Middleware (for dashboard)
 function isAuthenticated(req, res, next) {
@@ -264,58 +235,4 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
         console.error('Error fetching data from the database:', err.message);
         res.status(500).send('Error retrieving data from the database');
     }
-});
-
-// Add Dealer Code Route
-app.post('/add-dealer-code', isAuthenticated, (req, res) => {
-    const { dealerCode } = req.body;
-
-    db.run('INSERT INTO dealer_codes (code) VALUES (?)', [dealerCode], function(err) {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send('Error adding dealer code.');
-        }
-        console.log(`Dealer code added with ID ${this.lastID}`);
-        res.redirect('/dashboard');
-    });
-});
-
-// Delete Dealer Code Route
-app.post('/delete-dealer-code/:id', isAuthenticated, (req, res) => {
-    const { id } = req.params;
-
-    db.run('DELETE FROM dealer_codes WHERE id = ?', [id], function(err) {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send('Error deleting dealer code.');
-        }
-        console.log(`Dealer code with ID ${id} deleted`);
-        res.redirect('/dashboard');
-    });
-});
-
-app.get('/logout', (req, res) => {
-    req.session.destroy(err => {
-        if (err) {
-            console.error('Logout error:', err);
-            return res.status(500).send('Logout failed');
-        }
-        res.redirect('/login');
-    });
-});
-
-// The error handler must be before any other error middleware and after all controllers
-app.use(Sentry.Handlers.errorHandler());
-
-// Optional fallthrough error handler
-app.use(function onError(err, req, res, next) {
-    // The error id is attached to `res.sentry` to be returned
-    // and optionally displayed to the user for support.
-    res.statusCode = 500;
-    res.end(res.sentry + "\n");
-});
-
-// Create HTTP server
-app.listen(httpPort, () => {
-    console.log(`HTTP server running at http://localhost:${httpPort}`);
 });

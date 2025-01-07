@@ -12,9 +12,7 @@ db.serialize(() => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT,
         value TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        dealer_code TEXT,
-        FOREIGN KEY (dealer_code) REFERENCES dealer_codes(code)
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -28,16 +26,6 @@ db.serialize(() => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         code TEXT UNIQUE NOT NULL
     )`);
-
-    // Add the email column to the users table if it doesn't exist
-    db.run('ALTER TABLE users ADD COLUMN email TEXT UNIQUE', [], function(err) {
-        if (err) {
-            // Handle error (e.g., column might already exist)
-            console.error("Error altering table:", err.message);
-        } else {
-            console.log("Column 'email' added to users table.");
-        }
-    });
 
     // Insert an initial admin user if it doesn't exist
     const adminUsername = 'rnigeluno';
