@@ -7,6 +7,7 @@ const fs = require('fs');
 const app = express();
 const multer = require('multer');
 const upload = multer();
+const moment = require('moment-timezone'); // Add moment-timezone
 
 const httpPort = 3000;
 const credentials = require('./credentials.json');
@@ -119,13 +120,14 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
 });
 
 // Protected route for the scanning page
+// Protected route for the scanning page
 app.get('/', isValidDealerCode, (req, res) => {
     const dealerName = req.session.dealerName || 'Dealer';
     const greeting = getGreeting(dealerName);
 
-    // Fetch only the scans for the logged-in dealer for the current day
-    const today = new Date().toISOString().split('T')[0];
-    db.all('SELECT * FROM scans WHERE dealer_code_id = ? AND DATE(timestamp) = ?', [req.session.dealerCodeId, today], (err, rows) => {
+    // Fetch only the scans for the logged-in dealer for the current day, in EST
+    const todayEST = moment.tz('America/New_York').format('YYYY-MM-DD');
+    db.all(`SELECT *, datetime(timestamp, 'localtime') as timestamp FROM scans WHERE dealer_code_id = ? AND DATE(timestamp, 'localtime') = ?`, [req.session.dealerCodeId, todayEST], (err, rows) => {
         if (err) {
             console.error(err.message);
             return res.status(500).send('Error fetching scans from database.');
@@ -134,37 +136,37 @@ app.get('/', isValidDealerCode, (req, res) => {
     });
 });
 
+
 // Use multer middleware for /scan route
 app.post('/scan', upload.none(), (req, res) => { // Use upload.none() since you're not handling files
-    console.log("Request Body (Raw):", req.body); // Log the raw request body
+    console.log("Request Body (Raw):", req.body);
 
-    const { sku, imei } = req.body; // Destructure sku and imei
+    const { sku, imei } = req.body;
 
-    // Log the extracted values
     console.log("Extracted SKU:", sku);
     console.log("Extracted IMEI:", imei);
 
     const dealerCodeId = req.session.dealerCodeId;
     console.log("Dealer Code ID:", dealerCodeId);
 
-    // Validate data (check if sku and imei are not empty)
     if (!sku || !imei) {
         console.error("Error: SKU or IMEI is missing.");
-        return res.status(400).json({ error: 'SKU or IMEI is missing' }); // Send JSON error
+        return res.status(400).json({ error: 'SKU or IMEI is missing' });
     }
 
+    // Get the current time in EST
+    const currentTimeEST = moment.tz('America/New_York').format('YYYY-MM-DD HH:mm:ss');
+
     // Use parameterized query to prevent SQL injection
-    const sql = 'INSERT INTO scans (sku, imei, dealer_code_id) VALUES (?, ?, ?)';
-    db.run(sql, [sku, imei, dealerCodeId], function (err) {
+    const sql = 'INSERT INTO scans (sku, imei, dealer_code_id, timestamp) VALUES (?, ?, ?, ?)';
+    db.run(sql, [sku, imei, dealerCodeId, currentTimeEST], function (err) {
         if (err) {
             console.error("Database Error:", err.message);
-            return res.status(500).json({ error: 'Error saving scan to database' }); // Send JSON error
+            return res.status(500).json({ error: 'Error saving scan to database' });
         }
 
-        // Log the successful insertion
         console.log(`A row has been inserted with rowid ${this.lastID}`);
 
-        // Reset dealer code authentication
         req.session.dealerCodeAuthenticated = false;
 
         res.json({
@@ -233,7 +235,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     // Get filter parameters from query string
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
-    const dealerCodeId = req.query.dealerCode; // Get selected dealer code ID from query parameters
+    const dealerCodeId = req.query.dealerCode;
 
     // Construct the base SQL query
     let sql = `
@@ -284,7 +286,6 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
             });
         });
 
-        // Pass dealerCodeId to the template
         res.render('dashboard', { scans, username: req.session.username, dealerCodes, startDate, endDate, dealerCodeId });
     } catch (err) {
         console.error('Error fetching data from the database:', err.message);
