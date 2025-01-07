@@ -64,7 +64,8 @@ function isValidDealerCode(req, res, next) {
 }
 
 function isAdmin(req, res, next) {
-    if (req.session.isAdmin) {
+    // Check if the user is an admin and not a primary admin
+    if (req.session.isAdmin && !req.session.isPrimaryAdmin) {
         return next();
     }
     res.status(403).send('Access Denied');
@@ -307,7 +308,7 @@ app.get('/auth/google/callback', async (req, res) => {
 });
 
 app.get('/dashboard', isAuthenticated, async (req, res) => {
-    if (!req.session.isAdmin) {
+    if (req.session.isAdmin && !req.session.isPrimaryAdmin) {
         return res.redirect(`/store/${req.session.storeId}`);
     }
 
@@ -433,8 +434,7 @@ app.post('/add-dealer-code', isAuthenticated, isAdmin, (req, res) => {
                         console.error(err.message);
                         return res.status(500).send('Error adding dealer code.');
                     }
-                    console.log(`Dealer code added with ID ${this.lastID}
-                    for store ${req.session.storeId}`);
+                    console.log(`Dealer code added with ID ${this.lastID} for store ${req.session.storeId}`);
                     res.redirect(`/store/${req.session.storeId}`);
                 });
             } else {
@@ -463,13 +463,28 @@ app.post('/delete-dealer-code/:id', isAuthenticated, isAdmin, (req, res) => {
 app.post('/create-store', isAuthenticated, isPrimaryAdmin, (req, res) => {
     const { storeName, storeAddress } = req.body;
 
-    db.run('INSERT INTO stores (name, address) VALUES (?, ?)', [storeName, storeAddress], function(err) {
+    // Prevent stores with the same name from being created
+    db.get('SELECT id FROM stores WHERE name = ?', [storeName], function(err, existingStore) {
         if (err) {
             console.error(err.message);
-            return res.status(500).send('Error creating store.');
+            return res.status(500).send('Error checking for existing store.');
         }
-        console.log(`Store created with ID ${this.lastID}`);
-        res.redirect('/dashboard');
+
+        if (existingStore) {
+            // Store with the same name already exists
+            console.error(`Store with name ${storeName} already exists.`);
+            return res.status(409).send('A store with this name already exists.');
+        }
+
+        // No store with the same name exists, proceed with creation
+        db.run('INSERT INTO stores (name, address) VALUES (?, ?)', [storeName, storeAddress], function(err) {
+            if (err) {
+                console.error(err.message);
+                return res.status(500).send('Error creating store.');
+            }
+            console.log(`Store created with ID ${this.lastID}`);
+            res.redirect('/dashboard');
+        });
     });
 });
 
@@ -477,13 +492,27 @@ app.post('/create-store', isAuthenticated, isPrimaryAdmin, (req, res) => {
 app.post('/assign-admin', isAuthenticated, isPrimaryAdmin, (req, res) => {
     const { userId, storeId } = req.body;
 
-    db.run('UPDATE users SET store_id = ? WHERE id = ?', [storeId, userId], function(err) {
+    // Check if the selected user is the primary admin
+    db.get('SELECT primary_admin FROM users WHERE id = ?', [userId], (err, user) => {
         if (err) {
             console.error(err.message);
-            return res.status(500).send('Error assigning admin to store.');
+            return res.status(500).send('Error checking user admin status.');
         }
-        console.log(`Admin ${userId} assigned to store ${storeId}`);
-        res.redirect('/dashboard');
+
+        if (user && user.primary_admin) {
+            console.error('Cannot assign a store to the primary admin.');
+            return res.status(400).send('Cannot assign a store to the primary admin.');
+        }
+
+        // Proceed with updating the user's store assignment
+        db.run('UPDATE users SET store_id = ? WHERE id = ?', [storeId, userId], function(err) {
+            if (err) {
+                console.error(err.message);
+                return res.status(500).send('Error assigning admin to store.');
+            }
+            console.log(`Admin ${userId} assigned to store ${storeId}`);
+            res.redirect('/dashboard');
+        });
     });
 });
 
@@ -503,10 +532,14 @@ app.post('/assign-dealer', isAuthenticated, isAdmin, (req, res) => {
 
 app.get('/store/:storeId', isAuthenticated, async (req, res) => {
     const { storeId } = req.params;
-    const sessionStoreId = req.session.storeId;
 
-    // Primary admin can access any store
-    if (!req.session.isPrimaryAdmin && sessionStoreId !== storeId) {
+    // Check if the user is an admin
+    if (!req.session.isAdmin) {
+        return res.status(403).send('Access Denied');
+    }
+
+    // Only allow access if user is primary admin or store admin for the specific store
+    if (!req.session.isPrimaryAdmin && req.session.storeId !== storeId) {
         return res.status(403).send('Access Denied');
     }
 
@@ -525,7 +558,7 @@ app.get('/store/:storeId', isAuthenticated, async (req, res) => {
     const queryParams = [storeId];
 
     // Add WHERE clauses based on filters
-    const conditions = []; // Initialize conditions array here
+    const conditions = [];
     if (startDate) {
         conditions.push('DATE(scans.timestamp, \'localtime\') >= ?');
         queryParams.push(startDate);
@@ -540,7 +573,7 @@ app.get('/store/:storeId', isAuthenticated, async (req, res) => {
     }
 
     if (conditions.length > 0) {
-        sql += ' AND ' + conditions.join(' AND '); // Use AND to join conditions
+        sql += ' AND ' + conditions.join(' AND ');
     }
 
     // Order the results
@@ -561,6 +594,14 @@ app.get('/store/:storeId', isAuthenticated, async (req, res) => {
             });
         });
 
+        // Fetch the store name using the storeId from the URL
+        const store = await new Promise((resolve, reject) => {
+            db.get('SELECT name FROM stores WHERE id = ?', [storeId], (err, row) => {
+                if (err) reject(err);
+                resolve(row);
+            });
+        });
+
         res.render('store', {
             scans,
             username: req.session.username,
@@ -568,6 +609,7 @@ app.get('/store/:storeId', isAuthenticated, async (req, res) => {
             startDate,
             endDate,
             dealerCodeId,
+            storeName: store ? store.name : null, // Pass the store name to the template
             storeId
         });
     } catch (err) {
