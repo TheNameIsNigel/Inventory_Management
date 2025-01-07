@@ -1,19 +1,24 @@
 import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
 
+console.log('Script loaded'); // Check if script is loaded
+
 document.addEventListener('DOMContentLoaded', () => {
     const codeReader = new BrowserMultiFormatReader();
     const videoElement = document.getElementById('interactive');
 
     function startScan() {
+        console.log('Listing video devices...'); // Log before listing devices
         codeReader
             .listVideoInputDevices()
             .then((videoInputDevices) => {
+                console.log('Video input devices:', videoInputDevices); // Log the devices
                 const selectedDeviceId = videoInputDevices[0].deviceId;
+
+                console.log('Starting scan...'); // Log before starting scan
                 codeReader.decodeFromVideoDevice(selectedDeviceId, videoElement, (result, err) => {
                     if (result) {
-                        console.log('Code scanned:', result.text);
+                        console.log('Code scanned:', result.text); // Log the scanned code
                         processScannedCode(result.text);
-                        // Do not automatically restart the scan
                     }
                     if (err && !(err instanceof NotFoundException)) {
                         console.error('Error scanning barcode: ', err);
@@ -27,8 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function processScannedCode(code) {
         const formData = new FormData();
-        formData.append('sku', code); // Assuming SKU; adjust as needed
-        formData.append('imei', ''); // Adjust based on your logic
+        formData.append('sku', code);
+        formData.append('imei', ''); // Update with your IMEI detection logic
 
         fetch('/scan', {
             method: 'POST',
@@ -37,8 +42,18 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
+                // Dynamically add the scanned item to the table
+                const tableBody = document.getElementById('scan-table-body');
+                const newRow = tableBody.insertRow();
+                const skuCell = newRow.insertCell();
+                const imeiCell = newRow.insertCell();
+                const timestampCell = newRow.insertCell();
+
+                skuCell.textContent = code;
+                imeiCell.textContent = ''; // Set the IMEI (if available)
+                timestampCell.textContent = new Date().toLocaleString();
+
                 alert(data.message);
-                window.location.href = data.redirect;
             } else {
                 console.error('Scan failed: ', data.message);
             }
@@ -52,13 +67,12 @@ document.addEventListener('DOMContentLoaded', () => {
         .getUserMedia({ video: { facingMode: 'environment' } })
         .then((stream) => {
             videoElement.srcObject = stream;
-            videoElement.setAttribute('playsinline', true); // Required for iOS
+            videoElement.setAttribute('playsinline', true);
             videoElement.play();
         })
         .catch((err) => {
             console.error('Error accessing video stream: ', err);
         });
 
-        //Button to start the scanning process
-        document.getElementById('startButton').addEventListener('click', startScan);
+    document.getElementById('startButton').addEventListener('click', startScan);
 });

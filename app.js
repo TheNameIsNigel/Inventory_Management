@@ -31,13 +31,13 @@ function checkFailedLogins(req, res, next) {
 }
 
 app.use(session({
-    secret: 'your-secret-key',
+    secret: 'your-secret-key', // Replace with a strong secret key
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: false,
+        secure: false, // Set to true if using HTTPS
         httpOnly: true,
-        maxAge: 1000 * 60 * 60 * 24
+        maxAge: 1000 * 60 * 60 * 24 // 1 day
     }
 }));
 
@@ -111,6 +111,10 @@ app.post('/scan', (req, res) => {
     const { sku, imei } = req.body;
     const dealerCodeId = req.session.dealerCodeId;
 
+    console.log("SKU:", sku); // Debugging: Log the values
+    console.log("IMEI:", imei);
+    console.log("Dealer Code ID:", dealerCodeId);
+
     db.run('INSERT INTO scans (sku, imei, dealer_code_id) VALUES (?, ?, ?)', [sku, imei, dealerCodeId], function (err) {
         if (err) {
             console.error(err.message);
@@ -120,8 +124,8 @@ app.post('/scan', (req, res) => {
 
         req.session.dealerCodeAuthenticated = false;
 
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             message: 'Scan successful. Please log in again for the next scan.',
             redirect: '/'
         });
