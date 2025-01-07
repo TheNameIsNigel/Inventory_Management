@@ -7,17 +7,17 @@
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
-        /* Ensure the video container takes the full height of its parent */
-        .video-container {
+        /* Styling for the scanner viewport */
+        #interactive.viewport {
             position: relative;
             width: 100%;
-            padding-bottom: 56.25%; /* 16:9 aspect ratio (adjust as needed) */
+            height: auto;
             overflow: hidden;
+            margin: 0 auto; /* Center the video */
         }
 
-        /* Ensure the video takes the full width and height of its container */
-        #interactive.viewport video,
-        #interactive.viewport canvas {
+        /* Styling for the video and canvas elements */
+        #interactive.viewport video, #interactive.viewport canvas {
             position: absolute;
             top: 0;
             left: 0;
@@ -25,8 +25,9 @@
             height: 100%;
         }
 
+        /* Specific styling for the drawingBuffer canvas */
         #interactive.viewport canvas.drawingBuffer {
-            z-index: 1;
+            z-index: 1; /* Ensure the drawing buffer is above the video */
         }
     </style>
 </head>
@@ -37,13 +38,7 @@
                 Please authenticate with a valid dealer code. <a href="/dealer-login">Authenticate Now</a>
             </div>
         <% } else { %>
-            <div class="row">
-                <div class="col-md-8 offset-md-2">
-                    <div class="video-container">
-                        <div id="interactive" class="viewport"></div>
-                    </div>
-                </div>
-            </div>
+            <div id="interactive" class="viewport"></div>
             <div id="error-message" class="alert alert-danger" style="display: none;"></div>
 
             <form action="/scan" method="post" id="scan-form">
