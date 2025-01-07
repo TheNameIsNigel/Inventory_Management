@@ -263,7 +263,7 @@ app.get('/auth/google/callback', async (req, res) => {
 
                 if (!user) {
                     // Insert new user
-                    db.run('INSERT INTO users (username, email, isAdmin, primary_admin) VALUES (?, ?, ?, ?)', [userEmail, userEmail, isAdmin, isPrimaryAdmin], function (err) {
+                    db.run('INSERT INTO users (username, email, isAdmin, primary_admin) VALUES (?, ?, ?, ?)', [userEmail, userEmail, isAdmin, isPrimaryAdmin], function(err) {
                         if (err) {
                             console.error(err.message);
                             return res.status(500).send('Error creating user');
@@ -281,7 +281,7 @@ app.get('/auth/google/callback', async (req, res) => {
                 } else {
                     // Existing user
                     // Update user's admin status
-                    db.run('UPDATE users SET isAdmin = ?, primary_admin = ? WHERE id = ?', [isAdmin, isPrimaryAdmin, user.id], function (err) {
+                    db.run('UPDATE users SET isAdmin = ?, primary_admin = ? WHERE id = ?', [isAdmin, isPrimaryAdmin, user.id], function(err) {
                         if (err) {
                             console.error(err.message);
                             return res.status(500).send('Error updating user');
@@ -306,7 +306,11 @@ app.get('/auth/google/callback', async (req, res) => {
     }
 });
 
-app.get('/dashboard', isAuthenticated, isAdmin, async (req, res) => {
+app.get('/dashboard', isAuthenticated, async (req, res) => {
+    if (!req.session.isAdmin) {
+        return res.redirect(`/store/${req.session.storeId}`);
+    }
+
     // Get filter parameters from query string
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
@@ -405,14 +409,41 @@ app.get('/dashboard', isAuthenticated, isAdmin, async (req, res) => {
 app.post('/add-dealer-code', isAuthenticated, isAdmin, (req, res) => {
     const { dealerCode, dealerName, storeId } = req.body;
 
-    db.run('INSERT INTO dealer_codes (code, name, store_id) VALUES (?, ?, ?)', [dealerCode, dealerName, storeId], function(err) {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send('Error adding dealer code.');
-        }
-        console.log(`Dealer code added with ID ${this.lastID}`);
-        res.redirect('/dashboard');
-    });
+    if (req.session.isPrimaryAdmin) {
+        // Primary admin can add dealer codes to any store
+        db.run('INSERT INTO dealer_codes (code, name, store_id) VALUES (?, ?, ?)', [dealerCode, dealerName, storeId], function(err) {
+            if (err) {
+                console.error(err.message);
+                return res.status(500).send('Error adding dealer code.');
+            }
+            console.log(`Dealer code added with ID ${this.lastID}`);
+            res.redirect('/dashboard');
+        });
+    } else if (req.session.storeId) {
+        // Check if the logged-in user is an admin for the store
+        db.get('SELECT id FROM users WHERE id = ? AND store_id = ? AND isAdmin = 1', [req.session.userId, req.session.storeId], (err, user) => {
+            if (err) {
+                console.error(err.message);
+                return res.status(500).send('Error verifying admin status.');
+            }
+            if (user) {
+                // Store admin can only add dealer codes to their own store
+                db.run('INSERT INTO dealer_codes (code, name, store_id) VALUES (?, ?, ?)', [dealerCode, dealerName, req.session.storeId], function(err) {
+                    if (err) {
+                        console.error(err.message);
+                        return res.status(500).send('Error adding dealer code.');
+                    }
+                    console.log(`Dealer code added with ID ${this.lastID}
+                    for store ${req.session.storeId}`);
+                    res.redirect(`/store/${req.session.storeId}`);
+                });
+            } else {
+                res.status(403).send('Access Denied: Not authorized to add dealer codes for this store.');
+            }
+        });
+    } else {
+        res.status(403).send('Access Denied: Store ID not set.');
+    }
 });
 
 app.post('/delete-dealer-code/:id', isAuthenticated, isAdmin, (req, res) => {
@@ -472,9 +503,10 @@ app.post('/assign-dealer', isAuthenticated, isAdmin, (req, res) => {
 
 app.get('/store/:storeId', isAuthenticated, async (req, res) => {
     const { storeId } = req.params;
+    const sessionStoreId = req.session.storeId;
 
-    // Check if the user is an admin or if they are assigned to the requested store
-    if (!req.session.isAdmin && req.session.storeId !== storeId) {
+    // Primary admin can access any store
+    if (!req.session.isPrimaryAdmin && sessionStoreId !== storeId) {
         return res.status(403).send('Access Denied');
     }
 
@@ -493,12 +525,13 @@ app.get('/store/:storeId', isAuthenticated, async (req, res) => {
     const queryParams = [storeId];
 
     // Add WHERE clauses based on filters
+    const conditions = []; // Initialize conditions array here
     if (startDate) {
-        conditions.push('DATE(scans.timestamp) >= ?');
+        conditions.push('DATE(scans.timestamp, \'localtime\') >= ?');
         queryParams.push(startDate);
     }
     if (endDate) {
-        conditions.push('DATE(scans.timestamp) <= ?');
+        conditions.push('DATE(scans.timestamp, \'localtime\') <= ?');
         queryParams.push(endDate);
     }
     if (dealerCodeId) {
@@ -507,7 +540,7 @@ app.get('/store/:storeId', isAuthenticated, async (req, res) => {
     }
 
     if (conditions.length > 0) {
-        sql += ' WHERE ' + conditions.join(' AND ');
+        sql += ' AND ' + conditions.join(' AND '); // Use AND to join conditions
     }
 
     // Order the results

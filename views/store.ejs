@@ -30,6 +30,31 @@
         <h1>Welcome, <%= username.split(' ')[0] %>!</h1>
         <a href="/logout" class="btn btn-danger mb-3">Logout</a>
 
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Manage Dealer Codes for Store <%= storeId %></h2>
+            </div>
+            <div class="card-body">
+                <form action="/add-dealer-code" method="post" class="mb-3">
+                    <div class="input-group">
+                        <input type="text" name="dealerCode" class="form-control" placeholder="Enter new dealer code" required>
+                        <input type="text" name="dealerName" class="form-control" placeholder="Enter dealer name" required>
+                        <input type="hidden" name="storeId" value="<%= storeId %>">
+                        <div class="input-group-append">
+                            <button type="submit" class="btn btn-primary">Add Code</button>
+                        </div>
+                    </div>
+                </form>
+                <ul class="list-group">
+                    <% dealerCodes.forEach(function(code) { %>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <%= code.code %> (<%= code.name %>) - Store: <%= code.store_id %>
+                        </li>
+                    <% }); %>
+                </ul>
+            </div>
+        </div>
+
         <div class="filter-form">
             <h2>Filters</h2>
             <form method="GET" action="/store/<%= storeId %>">
