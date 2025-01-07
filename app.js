@@ -2,17 +2,21 @@ const express = require('express');
 const db = require('./database');
 const path = require('path');
 const session = require('express-session');
-const { google } = require('googleapis');
+const { google, outlook, microsoft } = require('googleapis');
 const fs = require('fs');
 const app = express();
 const multer = require('multer');
 const upload = multer();
-const moment = require('moment-timezone'); // Add moment-timezone
+const moment = require('moment-timezone');
 
 const httpPort = 3000;
 const credentials = require('./credentials.json');
 const { client_secret, client_id, redirect_uris } = credentials.web;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+
+const microsoftClientId = credentials.microsoft.client_id;
+const microsoftClientSecret = credentials.microsoft.client_secret;
+const microsoftRedirectUri = credentials.microsoft.redirect_uris[0];
 
 const failedLoginAttempts = {};
 
@@ -61,6 +65,13 @@ function isValidDealerCode(req, res, next) {
         return next();
     }
     res.redirect('/dealer-login');
+}
+
+function isAdmin(req, res, next) {
+    if (req.session.isAdmin) {
+        return next();
+    }
+    res.status(403).send('Access Denied');
 }
 
 // Function to get the greeting based on time of day
@@ -120,7 +131,6 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
 });
 
 // Protected route for the scanning page
-// Protected route for the scanning page
 app.get('/', isValidDealerCode, (req, res) => {
     const dealerName = req.session.dealerName || 'Dealer';
     const greeting = getGreeting(dealerName);
@@ -139,19 +149,21 @@ app.get('/', isValidDealerCode, (req, res) => {
 
 // Use multer middleware for /scan route
 app.post('/scan', upload.none(), (req, res) => { // Use upload.none() since you're not handling files
-    console.log("Request Body (Raw):", req.body);
+    console.log("Request Body (Raw):", req.body); // Log the raw request body
 
-    const { sku, imei } = req.body;
+    const { sku, imei } = req.body; // Destructure sku and imei
 
+    // Log the extracted values
     console.log("Extracted SKU:", sku);
     console.log("Extracted IMEI:", imei);
 
     const dealerCodeId = req.session.dealerCodeId;
     console.log("Dealer Code ID:", dealerCodeId);
 
+    // Validate data (check if sku and imei are not empty)
     if (!sku || !imei) {
         console.error("Error: SKU or IMEI is missing.");
-        return res.status(400).json({ error: 'SKU or IMEI is missing' });
+        return res.status(400).json({ error: 'SKU or IMEI is missing' }); // Send JSON error
     }
 
     // Get the current time in EST
@@ -162,11 +174,13 @@ app.post('/scan', upload.none(), (req, res) => { // Use upload.none() since you'
     db.run(sql, [sku, imei, dealerCodeId, currentTimeEST], function (err) {
         if (err) {
             console.error("Database Error:", err.message);
-            return res.status(500).json({ error: 'Error saving scan to database' });
+            return res.status(500).json({ error: 'Error saving scan to database' }); // Send JSON error
         }
 
+        // Log the successful insertion
         console.log(`A row has been inserted with rowid ${this.lastID}`);
 
+        // Reset dealer code authentication
         req.session.dealerCodeAuthenticated = false;
 
         res.json({
@@ -182,7 +196,7 @@ app.get('/login', (req, res) => {
         access_type: 'offline',
         scope: ['profile', 'email']
     });
-    res.redirect(authUrl);
+    res.render('login', { authUrl });
 });
 
 app.get('/auth/google/callback', async (req, res) => {
@@ -203,19 +217,51 @@ app.get('/auth/google/callback', async (req, res) => {
             : null;
 
         if (userEmail) {
-            db.get('SELECT * FROM users WHERE email = ?', [userEmail], (err, user) => {
+            db.get('SELECT * FROM users WHERE email = ?', [userEmail], async (err, user) => {
                 if (err) {
                     console.error(err.message);
                     return res.status(500).send('Internal Server Error');
                 }
 
-                if (user) {
+                let isAdmin = false;
+                let isPrimaryAdmin = false;
+
+                // Check if user exists
+                if (!user) {
+                    // Check if it's the first user (primary admin)
+                    const firstUser = await new Promise((resolve, reject) => {
+                        db.get('SELECT * FROM users', [], (err, row) => {
+                            if (err) reject(err);
+                            resolve(row);
+                        });
+                    });
+
+                    if (!firstUser) {
+                        isPrimaryAdmin = true;
+                        isAdmin = true;
+                    }
+                    if (userEmail.endsWith('@t-mobile.com')) {
+                        isAdmin = true;
+                    }
+
+                    // Insert new user
+                    db.run('INSERT INTO users (username, email, isAdmin, primary_admin) VALUES (?, ?, ?, ?)', [userEmail, userEmail, isAdmin, isPrimaryAdmin], function(err) {
+                        if (err) {
+                            console.error(err.message);
+                            return res.status(500).send('Error creating user');
+                        }
+                        console.log(`New user created with ID ${this.lastID}`);
+                        req.session.isAuthenticated = true;
+                        req.session.username = userEmail; // Default username to email
+                        req.session.isAdmin = isAdmin;
+                        res.redirect('/dashboard');
+                    });
+                } else {
+                    // Existing user
                     req.session.isAuthenticated = true;
                     req.session.username = user.username;
                     req.session.isAdmin = user.isAdmin;
                     res.redirect('/dashboard');
-                } else {
-                    res.status(403).send('User not authorized');
                 }
             });
         } else {
@@ -227,11 +273,99 @@ app.get('/auth/google/callback', async (req, res) => {
     }
 });
 
-app.get('/dashboard', isAuthenticated, async (req, res) => {
-    if (!req.session.isAdmin) {
-        return res.status(403).send('Access Denied');
-    }
+// Microsoft Login
+app.get('/auth/microsoft', (req, res) => {
+    const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=<span class="math-inline">\{microsoftClientId\}&response\_type\=code&redirect\_uri\=</span>{microsoftRedirectUri}&response_mode=query&scope=openid%20profile%20email&state=12345`;
+    res.redirect(authUrl);
+});
 
+app.get('/auth/microsoft/callback', async (req, res) => {
+    const { code } = req.query;
+
+    try {
+        const tokenResponse = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({
+                client_id: microsoftClientId,
+                scope: 'openid profile email',
+                code: code,
+                redirect_uri: microsoftRedirectUri,
+                grant_type: 'authorization_code',
+                client_secret: microsoftClientSecret
+            })
+        });
+
+        const tokenData = await tokenResponse.json();
+        const accessToken = tokenData.access_token;
+
+        // Fetch user information using the access token
+        const userResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+
+        const userData = await userResponse.json();
+        const userEmail = userData.mail || userData.userPrincipalName;
+
+        // Check if user exists in the database
+        db.get('SELECT * FROM users WHERE email = ?', [userEmail], async (err, user) => {
+            if (err) {
+                console.error(err.message);
+                return res.status(500).send('Internal Server Error');
+            }
+
+            let isAdmin = false;
+            let isPrimaryAdmin = false;
+
+            if (!user) {
+                // Check if it's the first user (primary admin)
+                const firstUser = await new Promise((resolve, reject) => {
+                    db.get('SELECT * FROM users', [], (err, row) => {
+                        if (err) reject(err);
+                        resolve(row);
+                    });
+                });
+
+                if (!firstUser) {
+                    isPrimaryAdmin = true;
+                    isAdmin = true;
+                }
+
+                if (userEmail.endsWith('@t-mobile.com')) {
+                    isAdmin = true;
+                }
+
+                // Insert new user
+                db.run('INSERT INTO users (username, email, isAdmin, primary_admin) VALUES (?, ?, ?, ?)', [userEmail, userEmail, isAdmin, isPrimaryAdmin], function(err) {
+                    if (err) {
+                        console.error(err.message);
+                        return res.status(500).send('Error creating user');
+                    }
+                    console.log(`New user created with ID ${this.lastID}`);
+                    req.session.isAuthenticated = true;
+                    req.session.username = userEmail; // Default username to email
+                    req.session.isAdmin = isAdmin;
+                    res.redirect('/dashboard');
+                });
+            } else {
+                // Existing user
+                req.session.isAuthenticated = true;
+                req.session.username = user.username;
+                req.session.isAdmin = user.isAdmin;
+                res.redirect('/dashboard');
+            }
+        });
+    } catch (error) {
+        console.error('Error during Microsoft authentication:', error);
+        res.status(500).send('Authentication error');
+    }
+});
+
+app.get('/dashboard', isAuthenticated, isAdmin, async (req, res) => {
     // Get filter parameters from query string
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
@@ -286,14 +420,21 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
             });
         });
 
-        res.render('dashboard', { scans, username: req.session.username, dealerCodes, startDate, endDate, dealerCodeId });
+        const users = await new Promise((resolve, reject) => {
+            db.all('SELECT id, username, email FROM users', [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows);
+            });
+        });
+
+        res.render('dashboard', { scans, username: req.session.username, dealerCodes, startDate, endDate, dealerCodeId, users });
     } catch (err) {
         console.error('Error fetching data from the database:', err.message);
         res.status(500).send('Error retrieving data from the database');
     }
 });
 
-app.post('/add-dealer-code', isAuthenticated, (req, res) => {
+app.post('/add-dealer-code', isAuthenticated, isAdmin, (req, res) => {
     const { dealerCode, dealerName } = req.body;
 
     db.run('INSERT INTO dealer_codes (code, name) VALUES (?, ?)', [dealerCode, dealerName], function(err) {
@@ -306,7 +447,7 @@ app.post('/add-dealer-code', isAuthenticated, (req, res) => {
     });
 });
 
-app.post('/delete-dealer-code/:id', isAuthenticated, (req, res) => {
+app.post('/delete-dealer-code/:id', isAuthenticated, isAdmin, (req, res) => {
     const { id } = req.params;
 
     db.run('DELETE FROM dealer_codes WHERE id = ?', [id], function(err) {
