@@ -39,8 +39,8 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: false, // Set to true if using HTTPS
-        httpOnly: true,
+        secure: true, // Set to true if using HTTPS
+        httpOnly: false,
         maxAge: 1000 * 60 * 60 * 24 // 1 day
     }
 }));
@@ -83,9 +83,9 @@ function getGreeting(dealerName) {
     const hour = new Date().getHours();
     let greeting = 'Good ';
 
-    if (hour >= 5 && hour < 12) {
+    if (hour >= 5 && hour < 17) {
         greeting += 'Morning';
-    } else if (hour >= 12 && hour < 18) {
+    } else if (hour >= 17 && hour < 23) {
         greeting += 'Afternoon';
     } else {
         greeting += 'Evening';
@@ -636,12 +636,20 @@ app.get('/store/:storeId', isAuthenticated, async (req, res) => {
 });
 
 app.get('/logout', (req, res) => {
+    // Clear specific session variables related to dealer authentication
+    req.session.dealerCodeAuthenticated = false;
+    req.session.dealerCodeId = null;
+    req.session.dealerName = null;
+    req.session.storeId = null;
+
+    // Destroy the session
     req.session.destroy(err => {
         if (err) {
             console.error('Logout error:', err);
             return res.status(500).send('Logout failed');
         }
-        res.redirect('/dealer-login'); // Redirect to dealer-login after logout
+        // Redirect to the dealer login page
+        res.redirect('/dealer-login');
     });
 });
 
