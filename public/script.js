@@ -5,7 +5,10 @@ console.log('Script loaded');
 document.addEventListener('DOMContentLoaded', () => {
     const codeReader = new BrowserMultiFormatReader();
     const videoElement = document.getElementById('interactive');
-    let scannedData = null; // Global variable to store scanned data
+    const captureButton = document.getElementById('captureButton');
+    let scannedData = null;
+
+    let selectedDeviceId = null;
 
     function startScan() {
         console.log('Listing video devices...');
@@ -15,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Video input devices:', videoInputDevices);
 
                 // Select the back/environment camera if available
-                let selectedDeviceId = videoInputDevices[0].deviceId; // Default to the first camera
+                selectedDeviceId = videoInputDevices[0].deviceId; // Default to the first camera
                 const backCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment'));
 
                 if (backCamera) {
@@ -23,20 +26,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 console.log('Starting scan with device:', selectedDeviceId);
-                codeReader.decodeFromVideoDevice(selectedDeviceId, videoElement, (result, err) => {
-                    if (result) {
-                        console.log('Code scanned:', result.text);
-                        processScannedCode(result.text);
-                    }
-                    if (err && !(err instanceof NotFoundException)) {
-                        console.error('Error scanning barcode: ', err);
-                    }
-                });
+                
+                // Start scanning but do not automatically process
+                startDecoding(selectedDeviceId);
             })
             .catch((err) => {
                 console.error('Error listing video devices or decoding: ', err);
             });
     }
+
+    function startDecoding(selectedDeviceId) {
+        codeReader.decodeFromVideoDevice(selectedDeviceId, videoElement, (result, err) => {
+            if (result) {
+                console.log('Barcode detected:', result.text);
+                scannedData = { code: result.text, type: null }; // Store scanned code, determine type later
+            }
+            if (err && !(err instanceof NotFoundException)) {
+                console.error('Error scanning barcode: ', err);
+            }
+        });
+    }
+
+    captureButton.addEventListener('click', () => {
+        if (scannedData) {
+            processScannedCode(scannedData.code);
+            scannedData = null; // Reset for the next scan
+        } else {
+            alert("No barcode detected yet.");
+        }
+    });
 
     function processScannedCode(code) {
         let type = '';
@@ -135,14 +153,15 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.mediaDevices
         .getUserMedia({
             video: {
-                facingMode: { ideal: 'environment' } // Prefer the back camera
+                deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+                facingMode: { ideal: 'environment' }
             }
         })
         .then((stream) => {
             videoElement.srcObject = stream;
             videoElement.setAttribute('playsinline', true);
             videoElement.play();
-            startScan(); // Start scanning immediately after camera access
+            startScan();
         })
         .catch((err) => {
             console.error('Error accessing video stream: ', err);

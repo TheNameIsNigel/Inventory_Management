@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMEI/UPC Scanner</title>
+    <title>Home - ICS</title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
@@ -49,6 +49,7 @@
         </div>
     <% } else { %>
         <video id="interactive" class="viewport" style="width: 100%"></video>
+        <button id="captureButton" class="btn btn-primary">Capture Barcode</button>
 
         <h2>Scanned Items</h2>
         <table class="table" id="scan-table">
