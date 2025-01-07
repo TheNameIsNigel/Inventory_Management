@@ -233,7 +233,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     // Get filter parameters from query string
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
-    const dealerCodeId = req.query.dealerCode;
+    const dealerCodeId = req.query.dealerCode; // Get selected dealer code ID from query parameters
 
     // Construct the base SQL query
     let sql = `
@@ -284,7 +284,8 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
             });
         });
 
-        res.render('dashboard', { scans, username: req.session.username, dealerCodes, startDate, endDate });
+        // Pass dealerCodeId to the template
+        res.render('dashboard', { scans, username: req.session.username, dealerCodes, startDate, endDate, dealerCodeId });
     } catch (err) {
         console.error('Error fetching data from the database:', err.message);
         res.status(500).send('Error retrieving data from the database');
