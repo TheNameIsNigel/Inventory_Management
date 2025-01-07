@@ -20,12 +20,14 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
-        email TEXT UNIQUE
+        email TEXT UNIQUE,
+        isAdmin BOOLEAN DEFAULT FALSE
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS dealer_codes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        code TEXT UNIQUE NOT NULL
+        code TEXT UNIQUE NOT NULL,
+        name TEXT
     )`);
 
     const adminUsername = 'rnigeluno';
@@ -38,7 +40,7 @@ db.serialize(() => {
         }
 
         if (!row) {
-            db.run('INSERT INTO users (username, email) VALUES (?, ?)', [adminUsername, adminEmail], function(err) {
+            db.run('INSERT INTO users (username, email, isAdmin) VALUES (?, ?, ?)', [adminUsername, adminEmail, true], function(err) {
                 if (err) {
                     console.error(err.message);
                     return;

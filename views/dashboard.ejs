@@ -20,6 +20,9 @@
             color: #666;
             z-index: 99;
         }
+        .filter-form {
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
@@ -35,6 +38,7 @@
                 <form action="/add-dealer-code" method="post" class="mb-3">
                     <div class="input-group">
                         <input type="text" name="dealerCode" class="form-control" placeholder="Enter new dealer code" required>
+                        <input type="text" name="dealerName" class="form-control" placeholder="Enter dealer name" required>
                         <div class="input-group-append">
                             <button type="submit" class="btn btn-primary">Add Code</button>
                         </div>
@@ -43,7 +47,7 @@
                 <ul class="list-group">
                     <% dealerCodes.forEach(function(code) { %>
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <%= code.code %>
+                            <%= code.code %> (<%= code.name %>)
                             <form action="/delete-dealer-code/<%= code.id %>" method="post">
                                 <button type="submit" class="btn btn-sm btn-danger">Delete</button>
                             </form>
@@ -53,6 +57,36 @@
             </div>
         </div>
 
+        <div class="filter-form">
+            <h2>Filters</h2>
+            <form method="GET" action="/dashboard">
+                <div class="form-row">
+                    <div class="col">
+                        <label for="startDate">Start Date:</label>
+                        <input type="date" id="startDate" name="startDate" class="form-control" value="<%= startDate %>">
+                    </div>
+                    <div class="col">
+                        <label for="endDate">End Date:</label>
+                        <input type="date" id="endDate" name="endDate" class="form-control" value="<%= endDate %>">
+                    </div>
+                    <div class="col">
+                        <label for="dealerCode">Dealer Code:</label>
+                        <select id="dealerCode" name="dealerCode" class="form-control">
+                            <option value="">All</option>
+                            <% dealerCodes.forEach(function(code) { %>
+                                <option value="<%= code.id %>" <%= code.id == dealerCodeId ? 'selected' : '' %>><%= code.name %></option>
+                            <% }); %>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-primary mt-4">Filter</button>
+                        <a href="/dashboard" class="btn btn-secondary mt-4">Clear</a>
+                    </div>
+                </div>
+            </form>
+        </div>
+        
+
         <h2>Scanned Items</h2>
         <table class="table" id="scan-table">
             <thead>
@@ -60,6 +94,7 @@
                     <th>SKU (UPC)</th>
                     <th>IMEI</th>
                     <th>Dealer Code</th>
+                    <th>Dealer Name</th>
                     <th>Timestamp</th>
                 </tr>
             </thead>
@@ -69,11 +104,11 @@
                         <td><%= scan.sku %></td>
                         <td><%= scan.imei %></td>
                         <td><%= scan.dealerCode %></td>
+                        <td><%= scan.dealerName %></td>
                         <td><%= scan.timestamp %></td>
                     </tr>
                 <% }); %>
-            </tbody>
-        </table>
+            </tbody></table>
 
         <div class="watermark">
             Logged in as: <%= username %><br>

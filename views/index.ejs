@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Control System</title>
+    <title>IMEI/UPC Scanner</title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
@@ -33,17 +33,22 @@
     <div class="header-image">
         <img src="header.png" alt="Header Image" class="img-fluid">
     </div>
+    <div class="d-flex justify-content-between align-items-center">
+        <% if (greeting) { %>
+            <div class="greeting mb-3">
+                <%= greeting %>
+            </div>
+        <% } %>
+        <form action="/logout" method="get">
+            <button type="submit" class="btn btn-danger">Logout</button>
+        </form>
+    </div>
     <% if (!dealerCodeAuthenticated) { %>
         <div class="alert alert-warning">
             Please authenticate with a valid dealer code. <a href="/dealer-login">Authenticate Now</a>
         </div>
     <% } else { %>
-        <div class="d-flex justify-content-between align-items-center">
-            <video id="interactive" class="viewport" style="width: 100%"></video>
-            <form action="/logout" method="get">
-                <button type="submit" class="btn btn-danger">Logout</button>
-            </form>
-        </div>
+        <video id="interactive" class="viewport" style="width: 100%"></video>
 
         <h2>Scanned Items</h2>
         <table class="table" id="scan-table">

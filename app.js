@@ -5,8 +5,8 @@ const session = require('express-session');
 const { google } = require('googleapis');
 const fs = require('fs');
 const app = express();
-const multer = require('multer'); // Import multer
-const upload = multer(); // Create a multer instance
+const multer = require('multer');
+const upload = multer();
 
 const httpPort = 3000;
 const credentials = require('./credentials.json');
@@ -62,6 +62,22 @@ function isValidDealerCode(req, res, next) {
     res.redirect('/dealer-login');
 }
 
+// Function to get the greeting based on time of day
+function getGreeting(dealerName) {
+    const hour = new Date().getHours();
+    let greeting = 'Good ';
+
+    if (hour >= 5 && hour < 12) {
+        greeting += 'Morning';
+    } else if (hour >= 12 && hour < 18) {
+        greeting += 'Afternoon';
+    } else {
+        greeting += 'Evening';
+    }
+
+    return `${greeting}, ${dealerName}!`;
+}
+
 app.get('/dealer-login', (req, res) => {
     res.render('dealer-login');
 });
@@ -82,6 +98,7 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
             delete failedLoginAttempts[ip];
             req.session.dealerCodeAuthenticated = true;
             req.session.dealerCodeId = dealerCodeRecord.id;
+            req.session.dealerName = dealerCodeRecord.name; // Store dealer name in session
             res.redirect('/');
         } else {
             failedLoginAttempts[ip] = failedLoginAttempts[ip] || { attempts: 0, timestamp: Date.now() };
@@ -101,12 +118,19 @@ app.post('/dealer-login', checkFailedLogins, async (req, res) => {
     }
 });
 
+// Protected route for the scanning page
 app.get('/', isValidDealerCode, (req, res) => {
-    db.all('SELECT * FROM scans', [], (err, rows) => {
+    const dealerName = req.session.dealerName || 'Dealer';
+    const greeting = getGreeting(dealerName);
+
+    // Fetch only the scans for the logged-in dealer for the current day
+    const today = new Date().toISOString().split('T')[0];
+    db.all('SELECT * FROM scans WHERE dealer_code_id = ? AND DATE(timestamp) = ?', [req.session.dealerCodeId, today], (err, rows) => {
         if (err) {
-            throw err;
+            console.error(err.message);
+            return res.status(500).send('Error fetching scans from database.');
         }
-        res.render('index', { scans: rows, dealerCodeAuthenticated: req.session.dealerCodeAuthenticated });
+        res.render('index', { scans: rows, dealerCodeAuthenticated: req.session.dealerCodeAuthenticated, greeting: greeting });
     });
 });
 
@@ -186,6 +210,7 @@ app.get('/auth/google/callback', async (req, res) => {
                 if (user) {
                     req.session.isAuthenticated = true;
                     req.session.username = user.username;
+                    req.session.isAdmin = user.isAdmin;
                     res.redirect('/dashboard');
                 } else {
                     res.status(403).send('User not authorized');
@@ -201,11 +226,53 @@ app.get('/auth/google/callback', async (req, res) => {
 });
 
 app.get('/dashboard', isAuthenticated, async (req, res) => {
+    if (!req.session.isAdmin) {
+        return res.status(403).send('Access Denied');
+    }
+
+    // Get filter parameters from query string
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    const dealerCodeId = req.query.dealerCode;
+
+    // Construct the base SQL query
+    let sql = `
+        SELECT scans.*, dealer_codes.code AS dealerCode, dealer_codes.name AS dealerName 
+        FROM scans 
+        LEFT JOIN dealer_codes ON scans.dealer_code_id = dealer_codes.id
+    `;
+    const queryParams = [];
+
+    // Add WHERE clauses based on filters
+    if (startDate || endDate || dealerCodeId) {
+        sql += ' WHERE ';
+        const conditions = [];
+
+        if (startDate) {
+            conditions.push('DATE(scans.timestamp) >= ?');
+            queryParams.push(startDate);
+        }
+
+        if (endDate) {
+            conditions.push('DATE(scans.timestamp) <= ?');
+            queryParams.push(endDate);
+        }
+
+        if (dealerCodeId) {
+            conditions.push('scans.dealer_code_id = ?');
+            queryParams.push(dealerCodeId);
+        }
+
+        sql += conditions.join(' AND ');
+    }
+
+    // Order the results
+    sql += ' ORDER BY scans.timestamp DESC';
+
     try {
         const scans = await new Promise((resolve, reject) => {
-            db.all('SELECT scans.*, dealer_codes.code AS dealerCode FROM scans LEFT JOIN dealer_codes ON scans.dealer_code_id = dealer_codes.id', [], (err, rows) => {
+            db.all(sql, queryParams, (err, rows) => {
                 if (err) reject(err);
-                console.log("Scans from DB:", rows); // Log the data from the database
                 resolve(rows);
             });
         });
@@ -217,7 +284,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
             });
         });
 
-        res.render('dashboard', { scans, username: req.session.username, dealerCodes });
+        res.render('dashboard', { scans, username: req.session.username, dealerCodes, startDate, endDate });
     } catch (err) {
         console.error('Error fetching data from the database:', err.message);
         res.status(500).send('Error retrieving data from the database');
@@ -225,9 +292,9 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
 });
 
 app.post('/add-dealer-code', isAuthenticated, (req, res) => {
-    const { dealerCode } = req.body;
+    const { dealerCode, dealerName } = req.body;
 
-    db.run('INSERT INTO dealer_codes (code) VALUES (?)', [dealerCode], function(err) {
+    db.run('INSERT INTO dealer_codes (code, name) VALUES (?, ?)', [dealerCode, dealerName], function(err) {
         if (err) {
             console.error(err.message);
             return res.status(500).send('Error adding dealer code.');
