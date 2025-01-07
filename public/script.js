@@ -31,81 +31,96 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-    function processScannedCode(code) {
-        let type = '';
-        if (code.length === 12) {
-            type = 'UPC';
-        } else if (code.length === 15) {
-            type = 'IMEI';
+function processScannedCode(code) {
+    let type = '';
+    if (code.length === 12) {
+        type = 'UPC';
+    } else if (code.length === 15) {
+        type = 'IMEI';
+    } else {
+        type = 'UNKNOWN';
+    }
+
+    if (scannedData === null) {
+        // First code scanned
+        scannedData = { code: code, type: type };
+        if (type === 'UPC') {
+            alert('Please scan IMEI.');
+        } else if (type === 'IMEI') {
+            alert('Please scan UPC.');
         } else {
-            type = 'UNKNOWN';
+            alert('Unknown code scanned');
+            scannedData = null;
         }
-
-        if (scannedData === null) {
-            // First code scanned
-            scannedData = { code: code, type: type };
-            if (type === 'UPC') {
-                alert('Please scan IMEI.');
-            } else if (type === 'IMEI') {
-                alert('Please scan UPC.');
-            } else {
-                alert('Unknown code scanned');
-                scannedData = null;
-            }
+    } else {
+        // Second code scanned
+        if (type === scannedData.type) {
+            // Duplicate scan
+            alert('Duplicate scan detected. Please scan the other code.');
+            scannedData = null; // Clear scannedData
         } else {
-            // Second code scanned
-            if (type === scannedData.type) {
-                // Duplicate scan
-                alert('Duplicate scan detected. Please scan the other code.');
-                scannedData = null; // Clear scannedData
+            // UPC and IMEI scanned
+            let sku = '';
+            let imei = '';
+
+            if (type === 'UPC') {
+                sku = code;
+                imei = scannedData.code;
             } else {
-                // UPC and IMEI scanned
-                let sku = '';
-                let imei = '';
-
-                if (type === 'UPC') {
-                    sku = code;
-                    imei = scannedData.code;
-                } else {
-                    sku = scannedData.code;
-                    imei = code;
-                }
-
-                const formData = new FormData();
-                formData.append('sku', sku);
-                formData.append('imei', imei);
-
-                console.log("FormData:", formData); // Log the formData
-
-                fetch('/scan', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const tableBody = document.getElementById('scan-table-body');
-                        const newRow = tableBody.insertRow();
-                        const skuCell = newRow.insertCell();
-                        const imeiCell = newRow.insertCell();
-                        const timestampCell = newRow.insertCell();
-
-                        skuCell.textContent = sku;
-                        imeiCell.textContent = imei;
-                        timestampCell.textContent = new Date().toLocaleString();
-
-                        alert(data.message);
-                        scannedData = null; // Clear scannedData
-                    } else {
-                        console.error('Scan failed: ', data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error submitting scan: ', error);
-                });
+                sku = scannedData.code;
+                imei = code;
             }
+
+            const formData = new FormData();
+            formData.append('sku', sku);
+            formData.append('imei', imei);
+
+            // Log the values being appended
+            console.log("Appending to FormData - SKU:", sku, "IMEI:", imei);
+
+            for (let pair of formData.entries()) {
+                console.log(pair[0] + ': ' + pair[1]);
+            }
+
+            fetch('/scan', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    // Log the response status and text for debugging
+                    console.error('HTTP error! status:', response.status);
+                    return response.text().then(text => {
+                        console.error('Response text:', text);
+                        throw new Error(text); // Throw error to be caught by catch block
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    const tableBody = document.getElementById('scan-table-body');
+                    const newRow = tableBody.insertRow();
+                    const skuCell = newRow.insertCell();
+                    const imeiCell = newRow.insertCell();
+                    const timestampCell = newRow.insertCell();
+
+                    skuCell.textContent = sku;
+                    imeiCell.textContent = imei;
+                    timestampCell.textContent = new Date().toLocaleString();
+
+                    alert(data.message);
+                    scannedData = null; // Clear scannedData
+                } else {
+                    console.error('Scan failed: ', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error submitting scan: ', error);
+            });
         }
     }
+}
 
     navigator.mediaDevices
         .getUserMedia({ video: { facingMode: 'environment' } })

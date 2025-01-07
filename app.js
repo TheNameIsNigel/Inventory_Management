@@ -109,35 +109,31 @@ app.get('/', isValidDealerCode, (req, res) => {
 });
 
 app.post('/scan', (req, res) => {
-    console.log("Request Body (Raw):", req.body); // Log the raw request body
+    console.log("Request Body (Raw):", req.body);
 
-    const { sku, imei } = req.body; // Destructure sku and imei
+    const { sku, imei } = req.body;
 
-    // Log the extracted values
     console.log("SKU:", sku);
     console.log("IMEI:", imei);
 
     const dealerCodeId = req.session.dealerCodeId;
     console.log("Dealer Code ID:", dealerCodeId);
 
-    // Validate data (check if sku and imei are not empty)
+    // Send JSON response for validation error
     if (!sku || !imei) {
         console.error("Error: SKU or IMEI is missing.");
-        return res.status(400).send('Error: SKU or IMEI is missing.');
+        return res.status(400).json({ error: 'SKU or IMEI is missing' }); // Send JSON error
     }
 
-    // Use parameterized query to prevent SQL injection
     const sql = 'INSERT INTO scans (sku, imei, dealer_code_id) VALUES (?, ?, ?)';
     db.run(sql, [sku, imei, dealerCodeId], function (err) {
         if (err) {
             console.error("Database Error:", err.message);
-            return res.status(500).send('Error saving scan to database.');
+            return res.status(500).json({ error: 'Error saving scan to database' }); // Send JSON error
         }
 
-        // Log the successful insertion
         console.log(`A row has been inserted with rowid ${this.lastID}`);
 
-        // Reset dealer code authentication
         req.session.dealerCodeAuthenticated = false;
 
         res.json({
